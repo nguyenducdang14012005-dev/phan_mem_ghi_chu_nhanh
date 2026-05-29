@@ -1,0 +1,23 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Google Sans', Roboto, sans-serif;
+  background: #fff;
+}
+
+button:hover {
+  background-color: #f1f3f4 !important;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #dadce0;
+  border-radius: 3px;
+}
