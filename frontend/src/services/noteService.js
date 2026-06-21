@@ -1,6 +1,9 @@
 const API = "http://localhost:5000/api";
 
-export async function searchNotes({ view, keyword, label_id }) {
+export async function searchNotes({ view, keyword, label_id, user_id }) {
+  // If no user_id provided, return empty set to avoid leaking notes
+  if (!user_id) return [];
+
   let url = `${API}/notes/search?`;
   if (view === "archive") url += "status=Archived";
   else if (view === "trash") url += "status=Deleted";
@@ -8,6 +11,8 @@ export async function searchNotes({ view, keyword, label_id }) {
   else url += "status=Active";
   if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
   if (label_id) url += `&label_id=${label_id}`;
+  // include user filter
+  url += `&user_id=${encodeURIComponent(user_id)}`;
   const res = await fetch(url);
   const data = await res.json();
   const notes = Array.isArray(data) ? data : [];

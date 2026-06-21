@@ -15,7 +15,7 @@ import labelService from "../services/labelService";
 import reminderService from "../services/reminderService";
 import shareService from "../services/shareService";
 
-export default function HomePage() {
+export default function HomePage({ isLogin, setIsLogin }) {
   useEffect(() => {
     Notification.requestPermission();
   }, []);
@@ -23,9 +23,8 @@ export default function HomePage() {
   const toggleMenu = () => {
     setIsOpen(!isOpen);
   };
-  const [isLogin, setIsLogin] = [false];
   const isLogOut = () => {
-    setIsLogin(!isLogin);
+    setIsLogin(null);
   };
   const [notes, setNotes] = useState([]);
   const [labels, setLabels] = useState([]);
@@ -62,7 +61,7 @@ export default function HomePage() {
     loadLabels();
     const interval = setInterval(checkReminders, 10000);
     return () => clearInterval(interval);
-  }, [view, selectedLabel, sortBy]);
+  }, [view, selectedLabel, sortBy, isLogin]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -72,6 +71,12 @@ export default function HomePage() {
   const loadNotes = async (kw = keyword, sort = sortBy) => {
     setLoading(true);
     try {
+      // Require logged-in user to load notes
+      if (!isLogin || !isLogin.userId) {
+        setNotes([]);
+        setLoading(false);
+        return;
+      }
       // ⚡ NÂNG CẤP: Xử lý hiển thị cả ghi chú Archived ngay tại màn hình chính
       let data = [];
       if (view === "notes") {
@@ -80,11 +85,13 @@ export default function HomePage() {
           view: "notes",
           keyword: kw,
           label_id: selectedLabel,
+          user_id: isLogin.userId,
         });
         const archivedNotes = await noteService.searchNotes({
           view: "archive",
           keyword: kw,
           label_id: selectedLabel,
+          user_id: isLogin.userId,
         });
 
         const safeActive = Array.isArray(activeNotes) ? activeNotes : [];
@@ -97,6 +104,7 @@ export default function HomePage() {
           view,
           keyword: kw,
           label_id: selectedLabel,
+          user_id: isLogin.userId,
         });
         data = Array.isArray(result) ? result : [];
       }

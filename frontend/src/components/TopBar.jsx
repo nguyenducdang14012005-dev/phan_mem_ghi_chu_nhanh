@@ -69,7 +69,7 @@ export default function TopBar({
                 /* NẾU ĐÃ ĐĂNG NHẬP (isLogin có giá trị đúng) -> HIỂN THỊ TÊN VÀ NÚT ĐĂNG XUẤT */
                 <>
                   <li style={{ fontWeight: "bold", color: "#6C63FF" }}>
-                    Chào, {isLogin}
+                    Chào, {isLogin?.fullName}
                   </li>
                   <li
                     onClick={() => {
