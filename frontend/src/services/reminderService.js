@@ -1,14 +1,12 @@
-const API = "http://localhost:5000/api";
+import { API, apiFetch } from "./apiClient.js";
 
 export async function getReminders() {
-  const res = await fetch(`${API}/reminders`);
-  return res.json();
+  return apiFetch(`${API}/reminders`);
 }
 
 export async function createReminder(payload) {
-  await fetch(`${API}/reminders`, {
+  return apiFetch(`${API}/reminders`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }

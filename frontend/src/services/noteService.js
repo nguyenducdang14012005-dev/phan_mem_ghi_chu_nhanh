@@ -1,4 +1,4 @@
-const API = "http://localhost:5000/api";
+import { API, apiFetch } from "./apiClient.js";
 
 export async function searchNotes({ view, keyword, label_id, user_id }) {
   // If no user_id provided, return empty set to avoid leaking notes
@@ -13,14 +13,14 @@ export async function searchNotes({ view, keyword, label_id, user_id }) {
   if (label_id) url += `&label_id=${label_id}`;
   // include user filter
   url += `&user_id=${encodeURIComponent(user_id)}`;
-  const res = await fetch(url);
-  const data = await res.json();
+
+  const data = await apiFetch(url);
   const notes = Array.isArray(data) ? data : [];
+
   const notesWithLabels = await Promise.all(
     notes.map(async (note) => {
       try {
-        const labelRes = await fetch(`${API}/notes/${note.note_id}/labels`);
-        const labels = await labelRes.json();
+        const labels = await apiFetch(`${API}/notes/${note.note_id}/labels`);
         return { ...note, labels };
       } catch (e) {
         return { ...note, labels: [] };
@@ -31,21 +31,19 @@ export async function searchNotes({ view, keyword, label_id, user_id }) {
 }
 
 export async function createNote(payload) {
-  await fetch(`${API}/notes`, {
+  return apiFetch(`${API}/notes`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }
 
 export async function togglePin(id) {
-  await fetch(`${API}/notes/${id}/pin`, { method: "PUT" });
+  return apiFetch(`${API}/notes/${id}/pin`, { method: "PUT" });
 }
 
 export async function changeStatus(id, status) {
-  await fetch(`${API}/notes/${id}/status`, {
+  return apiFetch(`${API}/notes/${id}/status`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
   });
 }

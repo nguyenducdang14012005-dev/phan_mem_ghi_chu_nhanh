@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import "./HomePage.css";
+import "./share.css";
 
+import shareService, { getAcceptedSharedNotes } from "../services/shareService";
 import TopBar from "../components/TopBar";
 import SideBar from "../components/SideBar";
 import NoteCard from "../components/NoteCard";
@@ -10,22 +12,25 @@ import ShareModal from "../components/ShareModal";
 import LabelPickerModal from "../components/LabelPickerModal";
 import Toast from "../components/Toast";
 
+// ⚡ IMPORT: Admin Dashboard page
+import AdminDashboardPage from "./AdminDashboardPage";
+
 import noteService from "../services/noteService";
 import labelService from "../services/labelService";
 import reminderService from "../services/reminderService";
-import shareService from "../services/shareService";
 
 export default function HomePage({ isLogin, setIsLogin }) {
   useEffect(() => {
     Notification.requestPermission();
   }, []);
+
+  // ⚡ STATE: Điều hướng sang trang Admin
+  const [page, setPage] = useState("home"); // "home" | "admin"
+  const [acceptedSharedNotes, setAcceptedSharedNotes] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
-  const toggleMenu = () => {
-    setIsOpen(!isOpen);
-  };
-  const isLogOut = () => {
-    setIsLogin(null);
-  };
+  const toggleMenu = () => setIsOpen(!isOpen);
+  const isLogOut = () => setIsLogin(null);
+
   const [notes, setNotes] = useState([]);
   const [labels, setLabels] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,7 +48,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareNoteId, setShareNoteId] = useState(null);
   const [shareEmail, setShareEmail] = useState("");
-  const [sharePermission, setSharePermission] = useState("View");
+  const [sharePermission, setSharePermission] = useState("view");
   const searchTimer = useRef(null);
   const [selectedLabel, setSelectedLabel] = useState(null);
   const [sortBy, setSortBy] = useState("newest");
@@ -52,14 +57,22 @@ export default function HomePage({ isLogin, setIsLogin }) {
   const [labelPickerOpen, setLabelPickerOpen] = useState(false);
   const [labelPickerNoteId, setLabelPickerNoteId] = useState(null);
   const [labelPickerNoteLabels, setLabelPickerNoteLabels] = useState([]);
-
-  // ⚡ STATE MỚI: Dùng để lưu ghi chú đang được chọn xem chi tiết
   const [viewingNote, setViewingNote] = useState(null);
+  const [pendingShares, setPendingShares] = useState([]);
+  const [mySharedNotes, setMySharedNotes] = useState([]);
 
   useEffect(() => {
     loadNotes();
     loadLabels();
-    const interval = setInterval(checkReminders, 10000);
+    loadPendingShares();
+    loadMySharedNotes();
+    loadAcceptedSharedNotes();
+    const interval = setInterval(() => {
+      checkReminders();
+      loadPendingShares();
+      loadMySharedNotes();
+      loadAcceptedSharedNotes();
+    }, 10000);
     return () => clearInterval(interval);
   }, [view, selectedLabel, sortBy, isLogin]);
 
@@ -71,16 +84,13 @@ export default function HomePage({ isLogin, setIsLogin }) {
   const loadNotes = async (kw = keyword, sort = sortBy) => {
     setLoading(true);
     try {
-      // Require logged-in user to load notes
       if (!isLogin || !isLogin.userId) {
         setNotes([]);
         setLoading(false);
         return;
       }
-      // ⚡ NÂNG CẤP: Xử lý hiển thị cả ghi chú Archived ngay tại màn hình chính
       let data = [];
       if (view === "notes") {
-        // Tải cả Active lẫn Archived về để trộn chung hiển thị ở trang chính
         const activeNotes = await noteService.searchNotes({
           view: "notes",
           keyword: kw,
@@ -93,13 +103,10 @@ export default function HomePage({ isLogin, setIsLogin }) {
           label_id: selectedLabel,
           user_id: isLogin.userId,
         });
-
         const safeActive = Array.isArray(activeNotes) ? activeNotes : [];
         const safeArchived = Array.isArray(archivedNotes) ? archivedNotes : [];
-
         data = [...safeActive, ...safeArchived];
       } else {
-        // Các phân vùng khác (reminders, archive, trash) hoạt động độc lập như cũ
         const result = await noteService.searchNotes({
           view,
           keyword: kw,
@@ -140,6 +147,74 @@ export default function HomePage({ isLogin, setIsLogin }) {
     }
   };
 
+  const loadPendingShares = async () => {
+    if (!isLogin || !isLogin.userId) {
+      setPendingShares([]);
+      return;
+    }
+    try {
+      const data = await shareService.getPendingShares();
+      setPendingShares(Array.isArray(data) ? data : []);
+    } catch {
+      setPendingShares([]);
+    }
+  };
+
+  const loadMySharedNotes = async () => {
+    if (!isLogin || !isLogin.userId) {
+      setMySharedNotes([]);
+      return;
+    }
+    try {
+      const data = await shareService.getMySharedNotes();
+      setMySharedNotes(Array.isArray(data) ? data : []);
+    } catch {
+      setMySharedNotes([]);
+    }
+  };
+
+  const handleAcceptShare = async (share_id) => {
+    try {
+      await shareService.acceptShare(share_id);
+      showToast("Đã chấp nhận chia sẻ");
+      loadPendingShares();
+      loadNotes();
+    } catch {
+      showToast("Lỗi khi chấp nhận chia sẻ");
+    }
+  };
+
+  const handleRejectShare = async (share_id) => {
+    try {
+      await shareService.rejectShare(share_id);
+      showToast("Đã từ chối chia sẻ");
+      loadPendingShares();
+    } catch {
+      showToast("Lỗi khi từ chối chia sẻ");
+    }
+  };
+
+  const handleRevokeShare = async (share_id) => {
+    try {
+      await shareService.removeShare(share_id);
+      showToast("Đã dừng chia sẻ ghi chú");
+      loadMySharedNotes();
+    } catch {
+      showToast("Lỗi khi dừng chia sẻ");
+    }
+  };
+  const loadAcceptedSharedNotes = async () => {
+    if (!isLogin?.userId) {
+      setAcceptedSharedNotes([]);
+      return;
+    }
+    try {
+      const data = await shareService.getAcceptedSharedNotes();
+      setAcceptedSharedNotes(Array.isArray(data) ? data : []);
+    } catch {
+      setAcceptedSharedNotes([]);
+    }
+  };
   const checkReminders = async () => {
     try {
       const data = await reminderService.getReminders();
@@ -148,9 +223,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
         const remindTime = new Date(r.remind_time);
         const diff = remindTime - now;
         remindTime.setHours(remindTime.getHours() + 7);
-        if (diff > 0 && diff <= 10000) {
-          showToast(" Đã đến giờ nhắc nhở!");
-        }
+        if (diff > 0 && diff <= 10000) showToast("Đã đến giờ nhắc nhở!");
       });
     } catch {}
   };
@@ -170,9 +243,8 @@ export default function HomePage({ isLogin, setIsLogin }) {
         dbTime.setHours(dbTime.getHours() + 7);
         return dbTime.toISOString().slice(0, 16) === reminderTime;
       });
-      if (trung) return showToast(" Đã có nhắc nhở vào giờ này rồi!");
+      if (trung) return showToast("Đã có nhắc nhở vào giờ này rồi!");
     } catch {}
-
     try {
       await reminderService.createReminder({
         note_id: reminderNoteId,
@@ -193,13 +265,16 @@ export default function HomePage({ isLogin, setIsLogin }) {
         email: shareEmail,
         permission: sharePermission,
       });
-      showToast("Đã chia sẻ ghi chú!");
+      showToast("Đã gửi lời mời chia sẻ, đang chờ người nhận phản hồi");
       setShareOpen(false);
       setShareEmail("");
-    } catch {
-      showToast("Lỗi khi chia sẻ");
+      setSharePermission("view");
+      loadMySharedNotes();
+    } catch (err) {
+      showToast(err?.message || "Lỗi khi chia sẻ");
     }
   };
+
   const createNote = async () => {
     if (!newTitle && !newContent) {
       setComposerOpen(false);
@@ -221,7 +296,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
       await noteService.createNote({
         title: newTitle,
         content: newContent,
-        due_time: newDueTime ? newDueTime : null,
+        due_time: newDueTime || null,
       });
       setNewTitle("");
       setNewContent("");
@@ -244,12 +319,14 @@ export default function HomePage({ isLogin, setIsLogin }) {
   const changeStatus = async (id, status) => {
     try {
       await noteService.changeStatus(id, status);
-
-      let msg = "";
-      if (status === "Archived") msg = "Đã lưu trữ";
-      else if (status === "Deleted") msg = "Đã chuyển vào thùng rác";
-      else if (status === "Active") msg = "Đã khôi phục ghi chú";
-
+      const msg =
+        status === "Archived"
+          ? "Đã lưu trữ"
+          : status === "Deleted"
+            ? "Đã chuyển vào thùng rác"
+            : status === "Active"
+              ? "Đã khôi phục ghi chú"
+              : "";
       if (msg) showToast(msg);
       loadNotes();
     } catch {}
@@ -279,6 +356,27 @@ export default function HomePage({ isLogin, setIsLogin }) {
   const pinnedNotes = notes.filter((n) => n.is_pinned);
   const otherNotes = notes.filter((n) => !n.is_pinned);
 
+  // ⚡ Kiểm tra user có role Admin không (để hiện nút Admin)
+  const isAdmin =
+    isLogin?.roles?.includes("Admin") || isLogin?.role === "Admin";
+
+  // ============================================================
+  // ⚡ RENDER: Nếu đang ở trang Admin thì render AdminDashboardPage
+  // ============================================================
+  if (page === "admin") {
+    return (
+      <AdminDashboardPage
+        authToken={localStorage.getItem("token")}
+        authUser={isLogin}
+        onBack={() => setPage("home")}
+        onLogout={isLogOut}
+      />
+    );
+  }
+
+  // ============================================================
+  // RENDER: HomePage bình thường
+  // ============================================================
   return (
     <div className="app">
       <TopBar
@@ -292,7 +390,65 @@ export default function HomePage({ isLogin, setIsLogin }) {
         toggleMenu={toggleMenu}
         isLogin={isLogin}
         isLogOut={isLogOut}
+        pendingShares={pendingShares}
+        onAcceptShare={handleAcceptShare}
+        onRejectShare={handleRejectShare}
+        mySharedNotes={mySharedNotes}
+        onRevokeShare={handleRevokeShare}
+        // ⚡ Truyền nút Admin vào TopBar (tuỳ TopBar có hỗ trợ slot hay không)
+        adminButton={
+          isAdmin ? (
+            <button
+              className="icon-btn admin-btn"
+              title="Trang quản trị Admin"
+              onClick={() => setPage("admin")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 12px",
+                borderRadius: 8,
+                background: "#1a73e8",
+                color: "#fff",
+                border: "none",
+                cursor: "pointer",
+                fontWeight: 600,
+                fontSize: 13,
+              }}
+            >
+              🛡 Admin
+            </button>
+          ) : null
+        }
       />
+
+      {/* ⚡ NÚT ADMIN nổi ở góc phải nếu TopBar không hỗ trợ prop adminButton */}
+      {isAdmin && (
+        <button
+          onClick={() => setPage("admin")}
+          title="Mở trang quản trị"
+          style={{
+            position: "fixed",
+            bottom: 28,
+            right: 28,
+            zIndex: 999,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "10px 20px",
+            borderRadius: 24,
+            background: "#1a73e8",
+            color: "#fff",
+            border: "none",
+            cursor: "pointer",
+            fontWeight: 700,
+            fontSize: 14,
+            boxShadow: "0 4px 16px rgba(26,115,232,0.35)",
+          }}
+        >
+          🛡 Quản trị Admin
+        </button>
+      )}
 
       <div className="main">
         {sidebarOpen && (
@@ -332,8 +488,42 @@ export default function HomePage({ isLogin, setIsLogin }) {
             setDatePickerOpen={setDatePickerOpen}
             createNote={createNote}
           />
+          {acceptedSharedNotes.length > 0 && (
+            <>
+              <div className="shared-section-label">
+                👥 Được chia sẻ với tôi
+              </div>
+              <div className="notes-grid">
+                {acceptedSharedNotes.map((n) => (
+                  <div
+                    key={n.note_id}
+                    className="note-card shared-card"
+                    onClick={() => setViewingNote(n)}
+                  >
+                    <div className="shared-badge">
+                      👥{" "}
+                      {n.permission === "view"
+                        ? "Chỉ xem"
+                        : n.permission === "edit"
+                          ? "Chỉnh sửa"
+                          : "Toàn quyền"}
+                    </div>
+                    {n.title && (
+                      <div
+                        className="note-title"
+                        dangerouslySetInnerHTML={{ __html: n.title }}
+                      />
+                    )}
+                    <div
+                      className="note-content"
+                      dangerouslySetInnerHTML={{ __html: n.content }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
 
-          {/* Notes */}
           {view === "labels" ? (
             <div className="label-manager">
               <div className="label-manager-header">
@@ -412,7 +602,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
                           setLabelPickerNoteLabels(noteLabels);
                           setLabelPickerOpen(true);
                         }}
-                        onViewDetails={(note) => setViewingNote(note)} // ⚡ TRUYỀN CALLBACK XEM CHI TIẾT
+                        onViewDetails={(note) => setViewingNote(note)}
                       />
                     ))}
                   </div>
@@ -446,7 +636,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
                       setLabelPickerNoteLabels(noteLabels);
                       setLabelPickerOpen(true);
                     }}
-                    onViewDetails={(note) => setViewingNote(note)} // ⚡ TRUYỀN CALLBACK XEM CHI TIẾT
+                    onViewDetails={(note) => setViewingNote(note)}
                   />
                 ))}
               </div>
@@ -479,6 +669,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
 
       {shareOpen && (
         <ShareModal
+          noteId={shareNoteId}
           email={shareEmail}
           setEmail={setShareEmail}
           permission={sharePermission}
@@ -488,7 +679,6 @@ export default function HomePage({ isLogin, setIsLogin }) {
         />
       )}
 
-      {/* ⚡ POPUP MODAL: Xem lại chi tiết nội dung ghi chú (Đọc mã HTML Word) */}
       {viewingNote && (
         <div className="modal-overlay" onClick={() => setViewingNote(null)}>
           <div
