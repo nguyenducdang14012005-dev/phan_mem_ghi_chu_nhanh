@@ -17,6 +17,8 @@ export default function TopBar({
   mySharedNotes = [],
   onRevokeShare,
   adminButton,
+  onOpenChangePassword,
+  onOpenNotifications,
 }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [sharedListOpen, setSharedListOpen] = useState(false);
@@ -40,7 +42,7 @@ export default function TopBar({
     ({ view: "Chỉ xem", edit: "Chỉnh sửa", delete: "Toàn quyền" })[p] || p;
 
   const statusLabel = (s) =>
-    ({ Pending: "Đang chờ", Accepted: "Đã chấp nhận", Rejected: "Đã từ chối" })[
+    ({ Pending: "Đang chờ", Accepted: "Đã chấp nhận", Rejected: "Đã từ chối", Revoked: "Đã dừng chia sẻ" })[
       s
     ] || s;
 
@@ -49,7 +51,12 @@ export default function TopBar({
       Accepted: "status-accepted",
       Rejected: "status-rejected",
       Pending: "status-pending",
+      Revoked: "status-revoked",
     })[s] || "";
+
+  const notifBadgeCount = pendingShares.filter(
+    (s) => s.share_status === "Pending" || (s.share_status === "Revoked" && !s.seen),
+  ).length;
 
   return (
     <div className="topbar">
@@ -104,8 +111,10 @@ export default function TopBar({
             className="icon-btn tb-notif-btn"
             title="Thông báo chia sẻ"
             onClick={() => {
-              setNotifOpen(!notifOpen);
+              const next = !notifOpen;
+              setNotifOpen(next);
               setSharedListOpen(false);
+              if (next) onOpenNotifications?.();
             }}
           >
             <img
@@ -118,15 +127,15 @@ export default function TopBar({
               }}
             />
 
-            {pendingShares.length > 0 && (
-              <span className="tb-badge">{pendingShares.length}</span>
+            {notifBadgeCount > 0 && (
+              <span className="tb-badge">{notifBadgeCount}</span>
             )}
           </button>
 
           {notifOpen && (
             <div className="tb-dropdown">
               <div className="tb-dropdown-header">
-                <span>Lời mời chia sẻ</span>
+                <span>Thông báo chia sẻ</span>
                 <span className="tb-dropdown-count">
                   {pendingShares.length}
                 </span>
@@ -136,42 +145,57 @@ export default function TopBar({
                 <div className="tb-dropdown-empty">Không có thông báo mới</div>
               ) : (
                 <div className="tb-dropdown-list">
-                  {pendingShares.map((s) => (
-                    <div key={s.share_id} className="tb-share-item">
-                      <div className="tb-share-meta">
-                        <span className="tb-share-title">
-                          <b>{s.shared_by_name || s.shared_by_email}</b> chia sẻ{" "}
-                          <b>"{s.title || "Không có tiêu đề"}"</b>
-                        </span>
-
-                        <span className="tb-share-perm">
-                          Quyền: {permissionLabel(s.permission)}
-                        </span>
+                  {pendingShares.map((s) =>
+                    s.share_status === "Revoked" ? (
+                      <div key={s.share_id} className="tb-share-item">
+                        <div className="tb-share-meta">
+                          <span className="tb-share-title">
+                            <b>{s.shared_by_name || s.shared_by_email}</b> đã{" "}
+                            <b>dừng chia sẻ</b>{" "}
+                            <b>"{s.title || "Không có tiêu đề"}"</b> với bạn
+                          </span>
+                          <span className="tb-share-perm">
+                            Bạn không còn quyền truy cập ghi chú này
+                          </span>
+                        </div>
                       </div>
+                    ) : (
+                      <div key={s.share_id} className="tb-share-item">
+                        <div className="tb-share-meta">
+                          <span className="tb-share-title">
+                            <b>{s.shared_by_name || s.shared_by_email}</b> chia sẻ{" "}
+                            <b>"{s.title || "Không có tiêu đề"}"</b>
+                          </span>
 
-                      <div className="tb-share-actions">
-                        <button
-                          className="tb-btn-accept"
-                          onClick={() => {
-                            onAcceptShare?.(s.share_id);
-                            setNotifOpen(false);
-                          }}
-                        >
-                          Chấp nhận
-                        </button>
+                          <span className="tb-share-perm">
+                            Quyền: {permissionLabel(s.permission)}
+                          </span>
+                        </div>
 
-                        <button
-                          className="tb-btn-reject"
-                          onClick={() => {
-                            onRejectShare?.(s.share_id);
-                            setNotifOpen(false);
-                          }}
-                        >
-                          Từ chối
-                        </button>
+                        <div className="tb-share-actions">
+                          <button
+                            className="tb-btn-accept"
+                            onClick={() => {
+                              onAcceptShare?.(s.share_id);
+                              setNotifOpen(false);
+                            }}
+                          >
+                            Chấp nhận
+                          </button>
+
+                          <button
+                            className="tb-btn-reject"
+                            onClick={() => {
+                              onRejectShare?.(s.share_id);
+                              setNotifOpen(false);
+                            }}
+                          >
+                            Từ chối
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ),
+                  )}
                 </div>
               )}
             </div>
@@ -232,8 +256,9 @@ export default function TopBar({
                       <button
                         className="tb-btn-revoke"
                         onClick={() => onRevokeShare?.(s.share_id)}
+                        disabled={s.share_status === "Revoked"}
                       >
-                        Dừng
+                        {s.share_status === "Revoked" ? "Đã dừng" : "Dừng"}
                       </button>
                     </div>
                   ))}
@@ -280,6 +305,24 @@ export default function TopBar({
                     </div>
                   </div>
                   <div className="tb-dropdown-divider" />
+                  <button
+                    className="tb-menu-item"
+                    onClick={() => {
+                      onOpenChangePassword?.();
+                      toggleMenu();
+                    }}
+                  >
+                    <img
+                      src="/images/reset-password.png"
+                      alt="Đổi mật khẩu"
+                      style={{
+                        width: "18px",
+                        height: "18px",
+                        objectFit: "contain",
+                      }}
+                    />{" "}
+                    Đổi mật khẩu
+                  </button>
                   <button
                     className="tb-menu-item tb-menu-item--danger"
                     onClick={() => {

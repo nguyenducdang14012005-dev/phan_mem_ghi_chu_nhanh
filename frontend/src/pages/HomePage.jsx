@@ -7,9 +7,11 @@ import TopBar from "../components/TopBar";
 import SideBar from "../components/SideBar";
 import NoteCard from "../components/NoteCard";
 import NoteComposer from "../components/NoteComposer";
+import NoteEditModal from "../components/NoteEditModal";
 import ReminderModal from "../components/ReminderModal";
 import ShareModal from "../components/ShareModal";
 import LabelPickerModal from "../components/LabelPickerModal";
+import ChangePasswordModal from "../components/ChangePasswordModal";
 import Toast from "../components/Toast";
 
 // ⚡ IMPORT: Admin Dashboard page
@@ -29,6 +31,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
   const [acceptedSharedNotes, setAcceptedSharedNotes] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
   const toggleMenu = () => setIsOpen(!isOpen);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const isLogOut = () => setIsLogin(null);
 
   const [notes, setNotes] = useState([]);
@@ -40,6 +43,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
   const [newTitle, setNewTitle] = useState("");
   const [newContent, setNewContent] = useState("");
   const [newDueTime, setNewDueTime] = useState("");
+  const [newColor, setNewColor] = useState("#ffffff");
   const [toast, setToast] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [reminderOpen, setReminderOpen] = useState(false);
@@ -203,6 +207,15 @@ export default function HomePage({ isLogin, setIsLogin }) {
       showToast("Lỗi khi dừng chia sẻ");
     }
   };
+
+  const handleOpenNotifications = async () => {
+    try {
+      await shareService.markNotificationsSeen();
+      loadPendingShares();
+    } catch {
+      // ignore
+    }
+  };
   const loadAcceptedSharedNotes = async () => {
     if (!isLogin?.userId) {
       setAcceptedSharedNotes([]);
@@ -297,10 +310,12 @@ export default function HomePage({ isLogin, setIsLogin }) {
         title: newTitle,
         content: newContent,
         due_time: newDueTime || null,
+        color: newColor !== "#ffffff" ? newColor : null,
       });
       setNewTitle("");
       setNewContent("");
       setNewDueTime("");
+      setNewColor("#ffffff");
       setComposerOpen(false);
       showToast("Đã lưu ghi chú");
       loadNotes();
@@ -353,6 +368,37 @@ export default function HomePage({ isLogin, setIsLogin }) {
     loadLabels();
   };
 
+  // ⚡ Đóng modal xem/chỉnh sửa ghi chú: lưu thay đổi (nếu có) và/hoặc đổi trạng thái
+  const handleCloseViewingNote = async (payload, statusChange) => {
+    const id = viewingNote?.note_id;
+    setViewingNote(null);
+    if (!id) return;
+    try {
+      if (payload) {
+        await noteService.updateNote(id, payload);
+      }
+      if (statusChange) {
+        await noteService.changeStatus(id, statusChange);
+        const msg =
+          statusChange === "Archived"
+            ? "Đã lưu trữ"
+            : statusChange === "Deleted"
+              ? "Đã chuyển vào thùng rác"
+              : statusChange === "Active"
+                ? "Đã khôi phục ghi chú"
+                : statusChange === "PermanentlyDeleted"
+                  ? "Đã xóa vĩnh viễn"
+                  : "";
+        if (msg) showToast(msg);
+      } else if (payload) {
+        showToast("Đã lưu thay đổi");
+      }
+      loadNotes();
+    } catch {
+      showToast("Lỗi khi lưu ghi chú");
+    }
+  };
+
   const pinnedNotes = notes.filter((n) => n.is_pinned);
   const otherNotes = notes.filter((n) => !n.is_pinned);
 
@@ -395,6 +441,8 @@ export default function HomePage({ isLogin, setIsLogin }) {
         onRejectShare={handleRejectShare}
         mySharedNotes={mySharedNotes}
         onRevokeShare={handleRevokeShare}
+        onOpenChangePassword={() => setChangePasswordOpen(true)}
+        onOpenNotifications={handleOpenNotifications}
         // ⚡ Truyền nút Admin vào TopBar (tuỳ TopBar có hỗ trợ slot hay không)
         adminButton={
           isAdmin ? (
@@ -484,6 +532,8 @@ export default function HomePage({ isLogin, setIsLogin }) {
             setNewContent={setNewContent}
             newDueTime={newDueTime}
             setNewDueTime={setNewDueTime}
+            newColor={newColor}
+            setNewColor={setNewColor}
             datePickerOpen={datePickerOpen}
             setDatePickerOpen={setDatePickerOpen}
             createNote={createNote}
@@ -658,6 +708,10 @@ export default function HomePage({ isLogin, setIsLogin }) {
 
       {toast && <Toast message={toast} />}
 
+      {changePasswordOpen && (
+        <ChangePasswordModal onClose={() => setChangePasswordOpen(false)} />
+      )}
+
       {reminderOpen && (
         <ReminderModal
           reminderTime={reminderTime}
@@ -680,48 +734,30 @@ export default function HomePage({ isLogin, setIsLogin }) {
       )}
 
       {viewingNote && (
-        <div className="modal-overlay" onClick={() => setViewingNote(null)}>
-          <div
-            className="modal-box"
-            style={{ width: "550px" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-header">
-              {viewingNote.title ? (
-                <span
-                  dangerouslySetInnerHTML={{ __html: viewingNote.title }}
-                  style={{ fontSize: "16px", fontWeight: "600" }}
-                />
-              ) : (
-                <span>Chi tiết ghi chú</span>
-              )}
-              <button className="icon-btn" onClick={() => setViewingNote(null)}>
-                ❌
-              </button>
-            </div>
-            <div
-              className="modal-body"
-              style={{
-                maxHeight: "400px",
-                overflowY: "auto",
-                padding: "10px 0",
-              }}
-            >
-              <div
-                dangerouslySetInnerHTML={{ __html: viewingNote.content }}
-                style={{ fontSize: "14px", lineHeight: "1.6" }}
-              />
-            </div>
-            <div className="modal-footer">
-              <button
-                className="btn-share"
-                onClick={() => setViewingNote(null)}
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
+        <NoteEditModal
+          key={viewingNote.note_id}
+          note={viewingNote}
+          onClose={handleCloseViewingNote}
+          onPin={(id) => {
+            togglePin(id);
+            setViewingNote((prev) =>
+              prev ? { ...prev, is_pinned: !prev.is_pinned } : prev,
+            );
+          }}
+          onReminder={(id) => {
+            setReminderNoteId(id);
+            setReminderOpen(true);
+          }}
+          onShare={(id) => {
+            setShareNoteId(id);
+            setShareOpen(true);
+          }}
+          onLabel={(id, noteLabels) => {
+            setLabelPickerNoteId(id);
+            setLabelPickerNoteLabels(noteLabels);
+            setLabelPickerOpen(true);
+          }}
+        />
       )}
     </div>
   );

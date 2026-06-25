@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css"; // Stylesheet bắt buộc của Quill
+import { NOTE_COLORS } from "../constants/noteColors.js";
 
 export default function NoteComposer({
   view,
@@ -12,17 +13,23 @@ export default function NoteComposer({
   setNewContent,
   newDueTime,
   setNewDueTime,
+  newColor,
+  setNewColor,
   datePickerOpen,
   setDatePickerOpen,
   createNote,
 }) {
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
   if (view !== "notes") return null;
+
+  const color = newColor || "#ffffff";
 
   // Hàm xử lý khi người dùng nhấn nút "Hủy"
   const handleCancel = () => {
     setNewTitle("");
     setNewContent("");
     setNewDueTime("");
+    if (setNewColor) setNewColor("#ffffff");
     setComposerOpen(false);
     if (setDatePickerOpen) setDatePickerOpen(false);
   };
@@ -65,7 +72,7 @@ export default function NoteComposer({
           </span>
         </div>
       ) : (
-        <div className="composer-expanded">
+        <div className="composer-expanded" style={{ backgroundColor: color }}>
           {/* Ô nhập tiêu đề giữ nguyên là input text thông thường */}
           <input
             className="composer-title"
@@ -149,7 +156,42 @@ export default function NoteComposer({
             }}
           >
             {/* Tách riêng hai nút chức năng Lưu và Hủy */}
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  className="card-btn"
+                  title="Chọn màu"
+                  onClick={() => setColorPickerOpen((v) => !v)}
+                >
+                  <img
+                    src="/images/palette.png"
+                    alt="Ghim"
+                    style={{
+                      width: "18px",
+                      height: "18px",
+                      objectFit: "contain",
+                    }}
+                  />
+                </button>
+                {colorPickerOpen && (
+                  <div className="color-picker-popup">
+                    {NOTE_COLORS.map((c) => (
+                      <button
+                        key={c.value}
+                        type="button"
+                        title={c.name}
+                        className={`color-dot ${color === c.value ? "selected" : ""}`}
+                        style={{ backgroundColor: c.value }}
+                        onClick={() => {
+                          if (setNewColor) setNewColor(c.value);
+                          setColorPickerOpen(false);
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 className="close-btn"
                 style={{ background: "#f1f3f4", color: "#5f6368" }}

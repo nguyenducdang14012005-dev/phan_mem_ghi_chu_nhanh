@@ -38,6 +38,11 @@ export async function rejectShare(share_id) {
   return apiFetch(`${API}/shares/${share_id}/reject`, { method: "POST" });
 }
 
+// Đánh dấu các thông báo "đã dừng chia sẻ" là đã xem (xoá số đếm ở chuông)
+export async function markNotificationsSeen() {
+  return apiFetch(`${API}/shares/notifications/seen`, { method: "PATCH" });
+}
+
 // Dừng chia sẻ / xóa một lượt chia sẻ (chỉ owner)
 export async function removeShare(share_id) {
   return apiFetch(`${API}/shares/${share_id}`, { method: "DELETE" });
@@ -47,6 +52,7 @@ export default {
   shareNote,
   getShares,
   getPendingShares,
+  markNotificationsSeen,
   getAcceptedSharedNotes,
   getMySharedNotes,
   acceptShare,

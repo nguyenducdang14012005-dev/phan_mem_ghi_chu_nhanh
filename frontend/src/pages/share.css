@@ -146,6 +146,7 @@
 .status-accepted { color: #1aa260; font-weight: 600; }
 .status-rejected { color: #d64545; font-weight: 600; }
 .status-pending  { color: #c98a02; font-weight: 600; }
+.status-revoked  { color: #6e7191; font-weight: 600; }
 
 /* ── Nút hành động trong item ────────────────────────────── */
 .tb-share-actions {

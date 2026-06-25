@@ -37,6 +37,13 @@ export async function createNote(payload) {
   });
 }
 
+export async function updateNote(id, payload) {
+  return apiFetch(`${API}/notes/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function togglePin(id) {
   return apiFetch(`${API}/notes/${id}/pin`, { method: "PUT" });
 }
@@ -48,4 +55,4 @@ export async function changeStatus(id, status) {
   });
 }
 
-export default { searchNotes, createNote, togglePin, changeStatus };
+export default { searchNotes, createNote, updateNote, togglePin, changeStatus };

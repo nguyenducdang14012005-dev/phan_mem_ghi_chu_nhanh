@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { getLabelColor } from "../constants/noteColors.js";
 
 export default function NoteCard({
   note,
@@ -55,11 +56,31 @@ export default function NoteCard({
 
       {note.labels && note.labels.length > 0 && (
         <div className="label-list">
-          {note.labels.map((l) => (
-            <span key={l.label_id} className="label-badge">
-              {l.label_name}
-            </span>
-          ))}
+          {note.labels.map((l) => {
+            const lc = getLabelColor(l.label_id);
+            return (
+              <span
+                key={l.label_id}
+                className="label-badge"
+                style={{
+                  backgroundColor: lc.bg,
+                  border: `1px solid ${lc.border}`,
+                  color: lc.text,
+                }}
+              >
+                <img
+                  src="/images/label.png"
+                  alt="Thông báo"
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    objectFit: "contain",
+                  }}
+                />{" "}
+                {l.label_name}
+              </span>
+            );
+          })}
         </div>
       )}
 
@@ -76,7 +97,16 @@ export default function NoteCard({
                   onStatus(note.note_id, "Active"); // Chuyển ngược về Active
                 }}
               >
-                🔄 Khôi phục
+                <img
+                  src="/images/history.png"
+                  alt="Thông báo"
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    objectFit: "contain",
+                  }}
+                />
+                Khôi phục
               </button>
               <button
                 className="card-btn"
@@ -87,7 +117,16 @@ export default function NoteCard({
                 }}
                 style={{ color: "var(--accent)" }}
               >
-                🗑 Xóa vĩnh viễn
+                <img
+                  src="/images/trash.png"
+                  alt="Thông báo"
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    objectFit: "contain",
+                  }}
+                />{" "}
+                Xóa vĩnh viễn
               </button>
             </>
           ) : (
@@ -101,7 +140,15 @@ export default function NoteCard({
                   onPin(note.note_id);
                 }}
               >
-                {note.is_pinned ? "📌" : "📍"}
+                <img
+                  src="/images/pin.png"
+                  alt="Ghim"
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    objectFit: "contain",
+                  }}
+                />
               </button>
               <button
                 className="card-btn"
@@ -111,7 +158,15 @@ export default function NoteCard({
                   onReminder(note.note_id);
                 }}
               >
-                🔔
+                <img
+                  src="/images/timer.png"
+                  alt="Thông báo"
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    objectFit: "contain",
+                  }}
+                />
               </button>
               <button
                 className="card-btn"
@@ -121,7 +176,15 @@ export default function NoteCard({
                   onLabel(note.note_id, note.labels || []);
                 }}
               >
-                🏷
+                <img
+                  src="/images/label.png"
+                  alt="Thông báo"
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    objectFit: "contain",
+                  }}
+                />
               </button>
               <button
                 className="card-btn"
@@ -131,7 +194,15 @@ export default function NoteCard({
                   onShare(note.note_id);
                 }}
               >
-                ✉️
+                <img
+                  src="/images/share (1).png"
+                  alt="Thông báo"
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    objectFit: "contain",
+                  }}
+                />
               </button>
               <button
                 className="card-btn"
@@ -144,7 +215,15 @@ export default function NoteCard({
                   );
                 }}
               >
-                🗄
+                <img
+                  src="/images/archive.png"
+                  alt="Thông báo"
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    objectFit: "contain",
+                  }}
+                />
               </button>
               <button
                 className="card-btn"
@@ -154,7 +233,15 @@ export default function NoteCard({
                   onStatus(note.note_id, "Deleted");
                 }}
               >
-                🗑
+                <img
+                  src="/images/trash.png"
+                  alt="Thông báo"
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    objectFit: "contain",
+                  }}
+                />
               </button>
             </>
           )}
