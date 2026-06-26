@@ -86,15 +86,15 @@ export const changeNoteStatus = async (req, res) => {
     const pool = await sql.connect();
 
     // ⚡ "Xóa vĩnh viễn": xóa thật khỏi DB (chỉ dùng trong Thùng rác)
-      // ⚠️  QUAN TRỌNG: Danh sách bảng phụ bên dưới được suy ra từ grep qua các controller
-      // khác (reminderController, shareController). Nếu schema thực tế có thêm bảng tham chiếu
-      // note_id (VD: AuditLogs, Attachments...) mà có FK constraint thì cần bổ sung DELETE ở đây.
-      // Cách kiểm tra: SELECT fk.name, tp.name AS parent_table
-      //   FROM sys.foreign_keys fk
-      //   JOIN sys.tables tp ON fk.parent_object_id = tp.object_id
-      //   JOIN sys.tables tr ON fk.referenced_object_id = tr.object_id
-      //   WHERE tr.name = 'Notes';
-      if (status === "PermanentlyDeleted") {
+    // ⚠️  QUAN TRỌNG: Danh sách bảng phụ bên dưới được suy ra từ grep qua các controller
+    // khác (reminderController, shareController). Nếu schema thực tế có thêm bảng tham chiếu
+    // note_id (VD: AuditLogs, Attachments...) mà có FK constraint thì cần bổ sung DELETE ở đây.
+    // Cách kiểm tra: SELECT fk.name, tp.name AS parent_table
+    //   FROM sys.foreign_keys fk
+    //   JOIN sys.tables tp ON fk.parent_object_id = tp.object_id
+    //   JOIN sys.tables tr ON fk.referenced_object_id = tr.object_id
+    //   WHERE tr.name = 'Notes';
+    if (status === "PermanentlyDeleted") {
       const request = pool
         .request()
         .input("id", sql.Int, id)
@@ -148,7 +148,8 @@ export const updateNote = async (req, res) => {
 
     const pool = await sql.connect();
 
-    const check = await pool
+    // ── Kiểm tra 1: user là owner? ──────────────────────────────
+    const ownerCheck = await pool
       .request()
       .input("id", sql.Int, id)
       .input("user_id", sql.Int, user_id)
@@ -156,11 +157,46 @@ export const updateNote = async (req, res) => {
         "SELECT note_id FROM Notes WHERE note_id = @id AND user_id = @user_id",
       );
 
-    if (check.recordset.length === 0) {
-      return res.status(404).json({ message: "Khong tim thay ghi chu" });
+    // ── Kiểm tra 2: nếu không phải owner, có quyền 'edit' hoặc 'delete' không? ──
+    if (ownerCheck.recordset.length === 0) {
+      const shareCheck = await pool
+        .request()
+        .input("note_id", sql.Int, id)
+        .input("user_id", sql.Int, user_id).query(`
+          SELECT permission FROM Note_Shares
+          WHERE note_id  = @note_id
+            AND user_id  = @user_id
+            AND permission IN ('edit', 'delete')
+            AND share_status = 'Accepted'
+        `);
+
+      if (shareCheck.recordset.length === 0) {
+        return res.status(403).json({
+          message: "Bạn không có quyền chỉnh sửa ghi chú này",
+        });
+      }
     }
 
     const dueTimeValue = due_time ? new Date(due_time) : null;
+
+    // Lưu phiên bản cũ vào Note_Versions trước khi update
+    const current = await pool
+      .request()
+      .input("id", sql.Int, id)
+      .query("SELECT title, content FROM Notes WHERE note_id = @id");
+
+    if (current.recordset.length > 0) {
+      const old = current.recordset[0];
+      await pool
+        .request()
+        .input("note_id", sql.Int, id)
+        .input("title", sql.NVarChar, old.title ?? "")
+        .input("content", sql.NVarChar, old.content ?? "")
+        .input("edited_by", sql.Int, user_id).query(`
+          INSERT INTO Note_Versions (note_id, title, content, edited_by, updated_at)
+          VALUES (@note_id, @title, @content, @edited_by, GETDATE())
+        `);
+    }
 
     await pool
       .request()
@@ -168,18 +204,17 @@ export const updateNote = async (req, res) => {
       .input("title", sql.NVarChar, title ?? "")
       .input("content", sql.NVarChar, content ?? "")
       .input("color", sql.NVarChar, color ?? null)
-      .input("due_time", sql.DateTime, dueTimeValue)
-      .query(
-        `UPDATE Notes
-         SET title = @title,
-             content = @content,
-             color = @color,
-             due_time = @due_time,
-             updated_at = GETDATE()
-         WHERE note_id = @id`,
-      );
+      .input("due_time", sql.DateTime, dueTimeValue).query(`
+        UPDATE Notes
+        SET title      = @title,
+            content    = @content,
+            color      = @color,
+            due_time   = @due_time,
+            updated_at = GETDATE()
+        WHERE note_id  = @id
+      `);
 
-    res.status(200).json({ message: "Cap nhat ghi chu thanh cong" });
+    res.status(200).json({ message: "Cập nhật ghi chú thành công" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -199,11 +234,9 @@ export const shareNoteMock = async (req, res) => {
         .status(404)
         .json({ message: "Khong tim thay email nay tren he thong" });
     }
-    res
-      .status(200)
-      .json({
-        message: `Da chia se quyen ${permission} cho ${email} thanh cong!`,
-      });
+    res.status(200).json({
+      message: `Da chia se quyen ${permission} cho ${email} thanh cong!`,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -232,20 +265,51 @@ export const createNoteVersion = async (req, res) => {
 export const getNoteVersions = async (req, res) => {
   try {
     const { id } = req.params;
+    const user_id = req.user.user_id ?? req.user.id;
 
     const pool = await sql.connect();
-    const result = await pool
+
+    // Kiểm tra: user là owner HOẶC có share Accepted?
+    const ownerCheck = await pool
       .request()
       .input("note_id", sql.Int, id)
-      .query(
-        "SELECT * FROM Note_Versions WHERE note_id = @note_id ORDER BY updated_at DESC",
-      );
+      .input("user_id", sql.Int, user_id).query(`
+        SELECT 1 AS has_access FROM Notes
+        WHERE note_id = @note_id AND user_id = @user_id
+        UNION
+        SELECT 1 FROM Note_Shares
+        WHERE note_id = @note_id AND user_id = @user_id AND share_status = 'Accepted'
+      `);
+
+    if (ownerCheck.recordset.length === 0) {
+      return res
+        .status(403)
+        .json({ message: "Không có quyền xem lịch sử ghi chú này" });
+    }
+
+    // Lấy versions kèm email người chỉnh sửa
+    const result = await pool.request().input("note_id", sql.Int, id).query(`
+        SELECT
+          nv.version_id,
+          nv.note_id,
+          nv.title,
+          nv.content,
+          nv.edited_by,
+          nv.updated_at,
+          u.email    AS editor_email,
+          u.full_name AS editor_name
+        FROM Note_Versions nv
+        LEFT JOIN Users u ON u.user_id = nv.edited_by
+        WHERE nv.note_id = @note_id
+        ORDER BY nv.updated_at DESC
+      `);
 
     res.status(200).json(result.recordset);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
+
 export const deleteNoteVersion = async (req, res) => {
   try {
     const { id, version_id } = req.params;

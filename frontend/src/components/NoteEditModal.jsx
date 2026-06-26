@@ -1,7 +1,9 @@
-import React, { useRef, useState } from "react";
+// src/components/NoteEditModal.jsx — BẢN SỬA ĐẦY ĐỦ
+import React, { useEffect, useRef, useState } from "react";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import { NOTE_COLORS, getLabelColor } from "../constants/noteColors.js";
+import { apiFetch, API } from "../services/apiClient.js";
 
 const modules = {
   toolbar: [
@@ -29,11 +31,11 @@ const formats = [
 
 export default function NoteEditModal({
   note,
-  onClose, // (updatedPayload | null) => void  — null nghĩa là không có gì cần lưu
-  onPin, // (id) => void
-  onReminder, // (id) => void
-  onShare, // (id) => void
-  onLabel, // (id, noteLabels) => void
+  onClose, // (updatedPayload | null, statusChange?) => void
+  onPin,
+  onReminder,
+  onShare,
+  onLabel,
 }) {
   const [title, setTitle] = useState(note.title || "");
   const [content, setContent] = useState(note.content || "");
@@ -43,13 +45,27 @@ export default function NoteEditModal({
   );
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+
+  // ── Lịch sử chỉnh sửa (versions) ──────────────────────────
+  const [showHistory, setShowHistory] = useState(false);
+  const [versions, setVersions] = useState([]);
+  const [versLoading, setVersLoading] = useState(false);
+
   const dirtyRef = useRef(false);
+
+  // ── BUG 1 FIX: chỉ readonly khi permission = 'view' ─────────
+  // Trước đây: note.permission !== undefined  →  khoá cả edit/delete
+  // Sửa:       note.permission === "view"     →  chỉ khoá view
+  const isReadOnly = note.permission === "view";
+
+  // Có thể chỉnh sửa: owner (không có permission) hoặc share edit/delete
+  const canEdit =
+    !note.permission ||
+    note.permission === "edit" ||
+    note.permission === "delete";
 
   const isDeleted = note.status === "Deleted";
   const isArchived = note.status === "Archived";
-  // Ghi chú được chia sẻ với mình (acceptedSharedNotes) không có đầy đủ dữ liệu
-  // (không có status/is_pinned/labels...) nên chỉ cho xem, không cho chỉnh sửa/xóa/lưu trữ.
-  const isReadOnly = note.permission !== undefined;
 
   const markDirty = () => {
     dirtyRef.current = true;
@@ -63,7 +79,7 @@ export default function NoteEditModal({
   });
 
   const handleClose = () => {
-    if (!isReadOnly && dirtyRef.current) {
+    if (canEdit && dirtyRef.current) {
       onClose(buildPayload());
     } else {
       onClose(null);
@@ -71,12 +87,35 @@ export default function NoteEditModal({
   };
 
   const handleStatusClick = (status) => {
-    // Lưu thay đổi đang chỉnh (nếu có) trước khi đổi trạng thái và đóng modal
-    if (!isReadOnly && dirtyRef.current) {
+    if (canEdit && dirtyRef.current) {
       onClose(buildPayload(), status);
     } else {
       onClose(null, status);
     }
+  };
+
+  // ── Load lịch sử chỉnh sửa ────────────────────────────────
+  const loadVersions = async () => {
+    setVersLoading(true);
+    try {
+      const data = await apiFetch(`${API}/notes/${note.note_id}/versions`);
+      setVersions(Array.isArray(data) ? data : []);
+    } catch {
+      setVersions([]);
+    }
+    setVersLoading(false);
+  };
+
+  useEffect(() => {
+    if (showHistory) loadVersions();
+  }, [showHistory]);
+
+  const handleRestoreVersion = async (v) => {
+    if (!canEdit) return;
+    setTitle(v.title || "");
+    setContent(v.content || "");
+    markDirty();
+    setShowHistory(false);
   };
 
   return (
@@ -86,6 +125,7 @@ export default function NoteEditModal({
         style={{ backgroundColor: color }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* ── Header ─────────────────────────────────────────── */}
         <div className="note-edit-header">
           <input
             className="note-edit-title"
@@ -106,11 +146,7 @@ export default function NoteEditModal({
               <img
                 src="/images/pin.png"
                 alt="Ghim"
-                style={{
-                  width: "18px",
-                  height: "18px",
-                  objectFit: "contain",
-                }}
+                style={{ width: 18, height: 18, objectFit: "contain" }}
               />
             </button>
           )}
@@ -119,371 +155,478 @@ export default function NoteEditModal({
           </button>
         </div>
 
+        {/* ── Badge quyền (note chia sẻ) ─────────────────────── */}
+        {note.permission && (
+          <div
+            style={{
+              padding: "4px 12px",
+              fontSize: 12,
+              color: "#fff",
+              background:
+                note.permission === "view"
+                  ? "#80868b"
+                  : note.permission === "edit"
+                    ? "#1a73e8"
+                    : "#e8710a",
+              borderRadius: 4,
+              margin: "0 12px 8px",
+              display: "inline-block",
+            }}
+          >
+            <img
+              src="/images/friends.png"
+              alt="Thông báo"
+              style={{
+                width: "18px",
+                height: "18px",
+                objectFit: "contain",
+              }}
+            />{" "}
+            {note.permission === "view"
+              ? "Chỉ xem"
+              : note.permission === "edit"
+                ? "Có thể chỉnh sửa"
+                : "Toàn quyền (chỉnh sửa + xóa)"}
+          </div>
+        )}
+
+        {/* ── Editor ─────────────────────────────────────────── */}
         <div className="note-edit-body">
           <ReactQuill
             theme="snow"
             value={content}
-            readOnly={isReadOnly}
             onChange={(val) => {
               setContent(val);
               markDirty();
             }}
-            placeholder="Ghi chú..."
-            modules={modules}
+            modules={isReadOnly ? { toolbar: false } : modules}
             formats={formats}
+            readOnly={isReadOnly}
+            style={{ minHeight: 180 }}
           />
         </div>
 
-        {/* Hiển thị hạn chót hiện có (click để sửa) */}
-        {note.due_time && !dueTime && !datePickerOpen && !isReadOnly && (
+        {/* ── Toolbar dưới (chỉ hiện khi không phải view-only) ── */}
+        {!isDeleted && canEdit && (
           <div
-            className="note-due-time"
-            style={{ cursor: "pointer", marginLeft: 4 }}
-            onClick={() => setDatePickerOpen(true)}
-          >
-            <img
-              src="/images/timer.png"
-              alt="Thông báo"
-              style={{
-                width: "18px",
-                height: "18px",
-                objectFit: "contain",
-              }}
-            />{" "}
-            {new Date(note.due_time).toLocaleString("vi-VN", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </div>
-        )}
-        {dueTime && !datePickerOpen && (
-          <div
-            className="note-due-time"
+            className="note-edit-toolbar"
             style={{
-              cursor: isReadOnly ? "default" : "pointer",
-              marginLeft: 4,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 4,
+              padding: "8px 12px",
             }}
-            onClick={() => !isReadOnly && setDatePickerOpen(true)}
           >
-            <img
-              src="/images/timer.png"
-              alt="Thông báo"
-              style={{
-                width: "18px",
-                height: "18px",
-                objectFit: "contain",
-              }}
-            />{" "}
-            {new Date(dueTime).toLocaleString("vi-VN", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+            {/* Màu nền */}
+            <div style={{ position: "relative" }}>
+              <button
+                className="icon-btn"
+                title="Đổi màu"
+                onClick={() => setColorPickerOpen((o) => !o)}
+              >
+                <img
+                  src="/images/palette.png"
+                  alt="Thông báo"
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    objectFit: "contain",
+                  }}
+                />
+              </button>
+              {colorPickerOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "110%",
+                    left: 0,
+                    zIndex: 10,
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 4,
+                    padding: 8,
+                    background: "#fff",
+                    border: "1px solid #e8eaed",
+                    borderRadius: 8,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                    width: 180,
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {NOTE_COLORS.map((c) => (
+                    <button
+                      key={c.value}
+                      title={c.label}
+                      onClick={() => {
+                        setColor(c.value);
+                        markDirty();
+                        setColorPickerOpen(false);
+                      }}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: "50%",
+                        background: c.value,
+                        border:
+                          color === c.value
+                            ? "3px solid #1a73e8"
+                            : "2px solid #e8eaed",
+                        cursor: "pointer",
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Nhắc nhở */}
+            {onReminder && (
+              <button
+                className="icon-btn"
+                title="Đặt nhắc nhở"
+                onClick={() => onReminder(note.note_id)}
+              >
+                <img
+                  src="/images/bell.png"
+                  alt="Thông báo"
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    objectFit: "contain",
+                  }}
+                />
+              </button>
+            )}
+
+            {/* Chia sẻ (chỉ owner) */}
+            {!note.permission && onShare && (
+              <button
+                className="icon-btn"
+                title="Chia sẻ"
+                onClick={() => onShare(note.note_id)}
+              >
+                <img
+                  src="/images/friends.png"
+                  alt="Thông báo"
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    objectFit: "contain",
+                  }}
+                />
+              </button>
+            )}
+
+            {/* Nhãn */}
+            {!note.permission && onLabel && (
+              <button
+                className="icon-btn"
+                title="Gắn nhãn"
+                onClick={() => onLabel(note.note_id, note.labels || [])}
+              >
+                <img
+                  src="/images/label.png"
+                  alt="Thông báo"
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    objectFit: "contain",
+                  }}
+                />
+              </button>
+            )}
+
+            {/* Hẹn giờ */}
+            <div style={{ position: "relative" }}>
+              <button
+                className="icon-btn"
+                title="Hạn chót"
+                onClick={() => setDatePickerOpen((o) => !o)}
+              >
+                📅{dueTime ? " ✓" : ""}
+              </button>
+              {datePickerOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "110%",
+                    left: 0,
+                    zIndex: 10,
+                    background: "#fff",
+                    border: "1px solid #e8eaed",
+                    borderRadius: 8,
+                    padding: 10,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="datetime-local"
+                    value={dueTime}
+                    onChange={(e) => {
+                      setDueTime(e.target.value);
+                      markDirty();
+                    }}
+                    style={{ fontSize: 13 }}
+                  />
+                  {dueTime && (
+                    <button
+                      onClick={() => {
+                        setDueTime("");
+                        markDirty();
+                      }}
+                      style={{ marginLeft: 6, fontSize: 12, cursor: "pointer" }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Lịch sử chỉnh sửa ─── */}
+            <button
+              className="icon-btn"
+              title="Lịch sử chỉnh sửa"
+              onClick={() => setShowHistory((o) => !o)}
+              style={{ marginLeft: "auto" }}
+            >
+              <img
+                src="/images/timer.png"
+                alt="Thông báo"
+                style={{
+                  width: "18px",
+                  height: "18px",
+                  objectFit: "contain",
+                }}
+              />{" "}
+              Lịch sử
+            </button>
           </div>
-        )}
-        {/* Nút "Thêm hạn chót" khi ghi chú chưa có due_time nào */}
-        {!note.due_time && !dueTime && !datePickerOpen && !isReadOnly && (
-          <button
-            className="card-btn"
-            style={{
-              marginLeft: 4,
-              marginBottom: 4,
-              fontSize: "0.82rem",
-              color: "#5f6368",
-            }}
-            title="Thêm hạn chót"
-            onClick={() => setDatePickerOpen(true)}
-          >
-            <img
-              src="/images/timer.png"
-              alt="Thông báo"
-              style={{
-                width: "18px",
-                height: "18px",
-                objectFit: "contain",
-              }}
-            />
-            Thêm hạn chót
-          </button>
         )}
 
-        {datePickerOpen && (
+        {/* Nút lịch sử cho note read-only (view-only share) */}
+        {isReadOnly && (
+          <div style={{ padding: "4px 12px 8px", textAlign: "right" }}>
+            <button
+              className="icon-btn"
+              title="Lịch sử chỉnh sửa"
+              onClick={() => setShowHistory((o) => !o)}
+            >
+              <img
+                src="/images/timer.png"
+                alt="Thông báo"
+                style={{
+                  width: "18px",
+                  height: "18px",
+                  objectFit: "contain",
+                }}
+              />{" "}
+              Lịch sử
+            </button>
+          </div>
+        )}
+
+        {/* ── Panel Lịch sử chỉnh sửa ──────────────────────── */}
+        {showHistory && (
           <div
-            className="date-picker-popup"
-            style={{ position: "static", margin: "8px 4px" }}
+            style={{
+              borderTop: "1px solid #e8eaed",
+              maxHeight: 260,
+              overflowY: "auto",
+              padding: "10px 14px",
+              background: "#fafafa",
+            }}
           >
-            <div
-              className="date-picker-header"
-              onClick={() => setDatePickerOpen(false)}
+            <p
+              style={{
+                margin: "0 0 8px",
+                fontWeight: 600,
+                fontSize: 13,
+                color: "#3c4043",
+              }}
             >
-              ← Chọn hạn chót
-            </div>
-            <div className="date-picker-body">
-              <input
-                type="date"
-                className="date-input"
-                value={dueTime.split("T")[0] || ""}
-                onChange={(e) => {
-                  setDueTime(
-                    e.target.value + "T" + (dueTime.split("T")[1] || "00:00"),
-                  );
-                  markDirty();
+              <img
+                src="/images/timer.png"
+                alt="Thông báo"
+                style={{
+                  width: "18px",
+                  height: "18px",
+                  objectFit: "contain",
                 }}
-              />
-              <input
-                type="time"
-                className="time-input"
-                value={dueTime.split("T")[1] || ""}
-                onChange={(e) => {
-                  setDueTime(
-                    (dueTime.split("T")[0] || "") + "T" + e.target.value,
-                  );
-                  markDirty();
-                }}
-              />
-            </div>
-            <div
-              className="date-picker-footer"
-              style={{ justifyContent: "space-between" }}
-            >
-              {dueTime && (
-                <button
-                  className="close-btn"
-                  onClick={() => {
-                    setDueTime("");
-                    markDirty();
-                    setDatePickerOpen(false);
+              />{" "}
+              Lịch sử chỉnh sửa
+            </p>
+            {versLoading ? (
+              <p style={{ fontSize: 13, color: "#80868b" }}>Đang tải...</p>
+            ) : versions.length === 0 ? (
+              <p style={{ fontSize: 13, color: "#80868b" }}>
+                Chưa có lịch sử chỉnh sửa.
+              </p>
+            ) : (
+              versions.map((v, i) => (
+                <div
+                  key={v.version_id ?? i}
+                  style={{
+                    padding: "8px 10px",
+                    marginBottom: 6,
+                    borderRadius: 6,
+                    background: "#fff",
+                    border: "1px solid #e8eaed",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
                   }}
                 >
-                  Xóa hạn chót
-                </button>
-              )}
-              <button
-                className="btn-share"
-                onClick={() => setDatePickerOpen(false)}
-              >
-                Xong
-              </button>
-            </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: "#80868b" }}>
+                      {v.updated_at
+                        ? new Date(v.updated_at).toLocaleString("vi-VN")
+                        : "—"}
+                      {v.editor_email ? ` · ${v.editor_email}` : ""}
+                    </span>
+                    {canEdit && (
+                      <button
+                        onClick={() => handleRestoreVersion(v)}
+                        style={{
+                          fontSize: 12,
+                          padding: "3px 10px",
+                          borderRadius: 6,
+                          border: "1px solid #1a73e8",
+                          color: "#1a73e8",
+                          background: "white",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Khôi phục
+                      </button>
+                    )}
+                  </div>
+                  <span
+                    style={{ fontSize: 13, fontWeight: 500, color: "#3c4043" }}
+                  >
+                    {v.title || "(không có tiêu đề)"}
+                  </span>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#5f6368",
+                      maxHeight: 60,
+                      overflow: "hidden",
+                    }}
+                    dangerouslySetInnerHTML={{ __html: v.content || "" }}
+                  />
+                </div>
+              ))
+            )}
           </div>
         )}
 
-        {note.labels && note.labels.length > 0 && (
-          <div className="label-list" style={{ padding: "0 4px" }}>
-            {note.labels.map((l) => {
-              const lc = getLabelColor(l.label_id);
-              return (
-                <span
-                  key={l.label_id}
-                  className="label-badge"
-                  style={{
-                    backgroundColor: lc.bg,
-                    border: `1px solid ${lc.border}`,
-                    color: lc.text,
-                  }}
+        {/* ── Footer: Status actions ──────────────────────────── */}
+        {!note.permission && (
+          <div
+            className="note-edit-footer"
+            style={{
+              display: "flex",
+              gap: 6,
+              padding: "8px 12px",
+              flexWrap: "wrap",
+            }}
+          >
+            {isDeleted ? (
+              <>
+                <button
+                  className="card-btn"
+                  onClick={() => handleStatusClick("Active")}
                 >
                   <img
-                    src="/images/label.png"
+                    src="/images/reload.png"
                     alt="Thông báo"
                     style={{
                       width: "18px",
                       height: "18px",
                       objectFit: "contain",
                     }}
-                  />
-                  {l.label_name}
-                </span>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="note-edit-footer">
-          {isDeleted ? (
-            <div className="note-edit-actions">
-              <button
-                className="card-btn"
-                title="Khôi phục ghi chú"
-                onClick={() => handleStatusClick("Active")}
-              >
-                <img
-                  src="/images/reload.png"
-                  alt="Thông báo"
-                  style={{
-                    width: "18px",
-                    height: "18px",
-                    objectFit: "contain",
-                  }}
-                />{" "}
-                Khôi phục
-              </button>
-              <button
-                className="card-btn"
-                title="Xóa vĩnh viễn"
-                style={{ color: "var(--accent)" }}
-                onClick={() => handleStatusClick("PermanentlyDeleted")}
-              >
-                <img
-                  src="/images/trash.png"
-                  alt="Thông báo"
-                  style={{
-                    width: "18px",
-                    height: "18px",
-                    objectFit: "contain",
-                  }}
-                />{" "}
-                Xóa vĩnh viễn
-              </button>
-            </div>
-          ) : (
-            <div className="note-edit-actions">
-              {!isReadOnly && (
+                  />{" "}
+                  Khôi phục
+                </button>
                 <button
-                  className="card-btn"
-                  title="Đặt hạn chót / nhắc nhở"
-                  onClick={() => onReminder(note.note_id)}
+                  className="card-btn danger"
+                  onClick={() => handleStatusClick("PermanentlyDeleted")}
                 >
                   <img
-                    src="/images/timer.png"
-                    alt="Nhắc nhở"
+                    src="/images/trash.png"
+                    alt="Thông báo"
                     style={{
                       width: "18px",
                       height: "18px",
                       objectFit: "contain",
                     }}
-                  />
+                  />{" "}
+                  Xóa vĩnh viễn
                 </button>
-              )}
-              {!isReadOnly && (
-                <div style={{ position: "relative" }}>
+              </>
+            ) : (
+              <>
+                {!isArchived && (
                   <button
                     className="card-btn"
-                    title="Đổi màu"
-                    onClick={() => setColorPickerOpen((v) => !v)}
+                    onClick={() => handleStatusClick("Archived")}
                   >
                     <img
-                      src="/images/palette.png"
-                      alt="Ghim"
+                      src="/images/archive.png"
+                      alt="Thông báo"
                       style={{
                         width: "18px",
                         height: "18px",
                         objectFit: "contain",
                       }}
                     />
+                    Lưu trữ
                   </button>
-                  {colorPickerOpen && (
-                    <div className="color-picker-popup">
-                      {NOTE_COLORS.map((c) => (
-                        <button
-                          key={c.value}
-                          title={c.name}
-                          className={`color-dot ${color === c.value ? "selected" : ""}`}
-                          style={{ backgroundColor: c.value }}
-                          onClick={() => {
-                            setColor(c.value);
-                            markDirty();
-                            setColorPickerOpen(false);
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              {!isReadOnly && (
+                )}
+                {isArchived && (
+                  <button
+                    className="card-btn"
+                    onClick={() => handleStatusClick("Active")}
+                  >
+                    <img
+                      src="/images/reload.png"
+                      alt="Thông báo"
+                      style={{
+                        width: "18px",
+                        height: "18px",
+                        objectFit: "contain",
+                      }}
+                    />{" "}
+                    Bỏ lưu trữ
+                  </button>
+                )}
                 <button
                   className="card-btn"
-                  title="Gán nhãn"
-                  onClick={() => onLabel(note.note_id, note.labels || [])}
-                >
-                  <img
-                    src="/images/label.png"
-                    alt="Nhãn"
-                    style={{
-                      width: "18px",
-                      height: "18px",
-                      objectFit: "contain",
-                    }}
-                  />
-                </button>
-              )}
-              {!isReadOnly && (
-                <button
-                  className="card-btn"
-                  title="Chia sẻ"
-                  onClick={() => onShare(note.note_id)}
-                >
-                  <img
-                    src="/images/share (1).png"
-                    alt="Chia sẻ"
-                    style={{
-                      width: "18px",
-                      height: "18px",
-                      objectFit: "contain",
-                    }}
-                  />
-                </button>
-              )}
-              {!isReadOnly && (
-                <button
-                  className="card-btn"
-                  title={isArchived ? "Hủy lưu trữ" : "Lưu trữ"}
-                  onClick={() =>
-                    handleStatusClick(isArchived ? "Active" : "Archived")
-                  }
-                >
-                  <img
-                    src="/images/archive.png"
-                    alt="Lưu trữ"
-                    style={{
-                      width: "18px",
-                      height: "18px",
-                      objectFit: "contain",
-                    }}
-                  />
-                </button>
-              )}
-              {!isReadOnly && (
-                <button
-                  className="card-btn"
-                  title="Xóa"
                   onClick={() => handleStatusClick("Deleted")}
                 >
                   <img
                     src="/images/trash.png"
-                    alt="Xóa"
+                    alt="Thông báo"
                     style={{
                       width: "18px",
                       height: "18px",
                       objectFit: "contain",
                     }}
-                  />
+                  />{" "}
+                  Xóa
                 </button>
-              )}
-              <span className="note-edit-updated">
-                Sửa lúc{" "}
-                {note.updated_at &&
-                  new Date(note.updated_at).toLocaleString("vi-VN", {
-                    day: "2-digit",
-                    month: "2-digit",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-              </span>
-              <button
-                className="btn-share note-edit-close"
-                onClick={handleClose}
-              >
-                Đóng
-              </button>
-            </div>
-          )}
-        </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

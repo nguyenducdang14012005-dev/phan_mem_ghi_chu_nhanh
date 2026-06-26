@@ -42,9 +42,12 @@ export default function TopBar({
     ({ view: "Chỉ xem", edit: "Chỉnh sửa", delete: "Toàn quyền" })[p] || p;
 
   const statusLabel = (s) =>
-    ({ Pending: "Đang chờ", Accepted: "Đã chấp nhận", Rejected: "Đã từ chối", Revoked: "Đã dừng chia sẻ" })[
-      s
-    ] || s;
+    ({
+      Pending: "Đang chờ",
+      Accepted: "Đã chấp nhận",
+      Rejected: "Đã từ chối",
+      Revoked: "Đã dừng chia sẻ",
+    })[s] || s;
 
   const statusClass = (s) =>
     ({
@@ -55,7 +58,8 @@ export default function TopBar({
     })[s] || "";
 
   const notifBadgeCount = pendingShares.filter(
-    (s) => s.share_status === "Pending" || (s.share_status === "Revoked" && !s.seen),
+    (s) =>
+      s.share_status === "Pending" || (s.share_status === "Revoked" && !s.seen),
   ).length;
 
   return (
@@ -163,8 +167,8 @@ export default function TopBar({
                       <div key={s.share_id} className="tb-share-item">
                         <div className="tb-share-meta">
                           <span className="tb-share-title">
-                            <b>{s.shared_by_name || s.shared_by_email}</b> chia sẻ{" "}
-                            <b>"{s.title || "Không có tiêu đề"}"</b>
+                            <b>{s.shared_by_name || s.shared_by_email}</b> chia
+                            sẻ <b>"{s.title || "Không có tiêu đề"}"</b>
                           </span>
 
                           <span className="tb-share-perm">
