@@ -206,18 +206,22 @@ body {
   background: #fff;
   border: 1.5px solid var(--primary);
   border-radius: var(--radius);
-  padding: 16px 18px;
   box-shadow: var(--shadow-hover);
-  height: auto; /* Đảm bảo wrapper tự động giãn theo text */
+  /* ⚡ flex-column: toolbar trên, body cuộn, actions dưới */
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  overflow: hidden; /* KHÔNG cuộn ở đây — chỉ .composer-body cuộn */
 }
 
 .composer-title {
+  flex-shrink: 0;
   border: none;
   outline: none;
   width: 100%;
   font-size: 16px;
   font-weight: 600;
-  margin-bottom: 10px;
+  padding: 14px 18px 0;
   display: block;
   color: var(--text-primary);
   background: transparent;
@@ -226,39 +230,57 @@ body {
 /* ==========================================================================
    ⚡ NÂNG CẤP ĐỊNH DẠNG WORD (QUILL EDITOR) & XỬ LÝ KHÔNG GIỚI HẠN CHIỀU CAO
    ========================================================================== */
-.composer-editor-container {
-  margin: 12px 0;
+/* ⚡ Toolbar cố định — nằm NGOÀI .composer-body (không cuộn) */
+.composer-toolbar-sticky {
+  flex-shrink: 0;
+  border: none !important;
+  border-bottom: 1px solid var(--border) !important;
+  border-top: none !important;
+  background: #fff;
+  padding: 6px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  font-family: inherit;
 }
 
-/* Ẩn viền thô mặc định của Quill để giống Google Keep */
-.composer-editor-container .ql-toolbar.ql-snow,
-.composer-editor-container .ql-container.ql-snow {
+/* ⚡ Vùng cuộn duy nhất: chỉ editor nằm trong này */
+.composer-body {
+  flex: 1;
+  min-height: 0; /* bắt buộc với flex child để không vượt max-height */
+  overflow-y: auto;
+  padding: 0 18px 8px;
+}
+
+.composer-editor-container {
+  margin: 8px 0;
+}
+
+/* Ẩn viền Quill bên trong composer-body */
+.composer-body .ql-toolbar.ql-snow,
+.composer-body .ql-container.ql-snow {
   border: none !important;
   font-family: inherit;
 }
 
-/* Thanh công cụ định dạng Word */
-.composer-editor-container .ql-toolbar.ql-snow {
-  border-bottom: 1px solid var(--border) !important;
-  padding: 8px 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+/* Quill tự render thêm 1 toolbar ẩn — ẩn nó đi,
+   toolbar thật đã render ở #composer-toolbar-fixed */
+.composer-body .ql-toolbar.ql-snow {
+  display: none;
 }
 
-/* KHÔNG GIỚI HẠN CHIỀU CAO: Loại bỏ max-height và scroll nội bộ của ô nhập */
-.composer-editor-container .ql-editor {
-  padding: 12px 0;
+/* Editor mở rộng tự nhiên trong vùng cuộn */
+.composer-body .ql-editor {
+  padding: 10px 0;
   font-size: 14px;
   color: var(--text-primary);
   line-height: 1.6;
-  min-height: 120px;
-  height: auto !important; /* Chấp nhận mở rộng liên tục theo nội dung */
-  overflow-y: visible !important; /* Triệt tiêu hoàn toàn thanh cuộn riêng biệt */
+  min-height: 200px;
+  height: auto !important;
+  overflow-y: visible !important;
 }
 
-/* Định dạng placeholder cho mượt */
-.composer-editor-container .ql-editor.ql-blank::before {
+.composer-body .ql-editor.ql-blank::before {
   left: 0;
   right: 0;
   font-style: normal;
@@ -267,11 +289,11 @@ body {
 }
 
 .composer-actions {
+  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 14px;
-  padding-top: 10px;
+  padding: 10px 18px 14px;
   border-top: 1px solid var(--border);
 }
 
@@ -323,6 +345,10 @@ body {
   transition: all 0.2s;
   box-shadow: var(--shadow);
   animation: fadeInUp 0.3s ease forwards;
+  /* ⚡ Flex column để có thể "ghim" label-list xuống đáy thẻ (margin-top: auto)
+     thay vì để nó nằm lưng chừng ngay sau phần nội dung */
+  display: flex;
+  flex-direction: column;
 }
 
 .note-card:hover {
@@ -579,7 +605,8 @@ body {
 .label-list {
   display: flex;
   flex-wrap: wrap;
-  margin-top: 8px;
+  margin-top: auto; /* ⚡ luôn đẩy xuống đáy thẻ, không còn nằm lưng chừng */
+  padding-top: 8px;
 }
 
 .sort-select {
@@ -874,7 +901,9 @@ body {
 }
 
 .note-card:hover {
-  box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
+  box-shadow:
+    0 1px 2px 0 rgba(60, 64, 67, 0.3),
+    0 2px 6px 2px rgba(60, 64, 67, 0.15);
   border-color: #e0e0e0;
   transform: none;
 }
@@ -917,7 +946,7 @@ body {
   flex-direction: column;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
   animation: modalPopIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: visible;
+  overflow: hidden; /* ⚡ cần thiết để flex-child (body) cuộn đúng */
 }
 
 .note-edit-header {
@@ -937,22 +966,37 @@ body {
   color: var(--text-primary);
 }
 
+/* ⚡ Toolbar modal — nằm giữa header và body, KHÔNG cuộn */
+.note-edit-toolbar-sticky {
+  flex-shrink: 0;
+  border: none !important;
+  border-bottom: 1px solid var(--border) !important;
+  border-top: 1px solid var(--border) !important;
+  background: inherit; /* kế thừa màu note */
+  padding: 5px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  font-family: inherit;
+}
+
 .note-edit-body {
   flex: 1;
+  min-height: 0; /* bắt buộc với flex child */
   overflow-y: auto;
   padding: 0 14px 8px 18px;
 }
 
-/* Ẩn viền Quill, tối giản thanh công cụ giống Keep */
+/* Ẩn viền Quill bên trong note-edit-body */
 .note-edit-body .ql-toolbar.ql-snow,
 .note-edit-body .ql-container.ql-snow {
   border: none !important;
   font-family: inherit;
 }
 
+/* Quill tự render toolbar ẩn bên trong — ẩn nó đi */
 .note-edit-body .ql-toolbar.ql-snow {
-  border-bottom: 1px solid var(--border) !important;
-  padding: 6px 0;
+  display: none;
 }
 
 .note-edit-body .ql-editor {
@@ -960,7 +1004,9 @@ body {
   font-size: 14px;
   color: var(--text-primary);
   line-height: 1.6;
-  min-height: 140px;
+  min-height: 200px;
+  height: auto !important;
+  overflow-y: visible !important;
 }
 
 .note-edit-footer {

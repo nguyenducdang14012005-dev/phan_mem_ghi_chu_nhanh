@@ -11,6 +11,7 @@ import NoteEditModal from "../components/NoteEditModal";
 import ReminderModal from "../components/ReminderModal";
 import ShareModal from "../components/ShareModal";
 import LabelPickerModal from "../components/LabelPickerModal";
+import ConfirmModal from "../components/ConfirmModal";
 import ChangePasswordModal from "../components/ChangePasswordModal";
 import Toast from "../components/Toast";
 
@@ -61,6 +62,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
   const [labelPickerOpen, setLabelPickerOpen] = useState(false);
   const [labelPickerNoteId, setLabelPickerNoteId] = useState(null);
   const [labelPickerNoteLabels, setLabelPickerNoteLabels] = useState([]);
+  const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
   const [viewingNote, setViewingNote] = useState(null);
   const [pendingShares, setPendingShares] = useState([]);
   const [mySharedNotes, setMySharedNotes] = useState([]);
@@ -331,7 +333,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
     } catch {}
   };
 
-  const changeStatus = async (id, status) => {
+  const doChangeStatus = async (id, status) => {
     try {
       await noteService.changeStatus(id, status);
       const msg =
@@ -347,13 +349,52 @@ export default function HomePage({ isLogin, setIsLogin }) {
     } catch {}
   };
 
+  const changeStatus = async (id, status) => {
+    const note = notes.find((n) => n.note_id === id);
+    const isArchiveAction = status === "Archived";
+    const isUnarchiveAction = status === "Active" && note?.status === "Archived";
+
+    // ⚡ Lưu trữ / hủy lưu trữ làm ghi chú ẩn/hiện lại ở trang chính
+    // -> hỏi xác nhận trước khi thực hiện.
+    if (isArchiveAction || isUnarchiveAction) {
+      setConfirmDialog({
+        title: isArchiveAction ? "Lưu trữ ghi chú" : "Hủy lưu trữ",
+        message: isArchiveAction
+          ? "Sau khi lưu trữ, ghi chú này sẽ không còn hiển thị ở trang chính nữa (trừ khi được ghim). Bạn có chắc muốn lưu trữ?"
+          : "Ghi chú sẽ hiển thị lại ở trang chính sau khi hủy lưu trữ. Bạn có chắc muốn tiếp tục?",
+        onConfirm: () => {
+          setConfirmDialog(null);
+          doChangeStatus(id, status);
+        },
+      });
+      return;
+    }
+
+    doChangeStatus(id, status);
+  };
+
   const toggleLabelOnNote = async (note_id, label_id, currentLabels) => {
     const isAttached = currentLabels.some((l) => l.label_id === label_id);
     if (isAttached) {
-      await labelService.detachLabel(note_id, label_id);
-    } else {
-      await labelService.attachLabel(note_id, label_id);
+      // ⚡ Xóa nhãn khỏi ghi chú là hành động có thể gây mất dữ liệu phân loại
+      // -> luôn hỏi xác nhận trước khi thực hiện.
+      const label = currentLabels.find((l) => l.label_id === label_id);
+      setConfirmDialog({
+        title: "Xóa nhãn",
+        message: `Bạn có chắc muốn xóa nhãn "${label?.label_name || ""}" khỏi ghi chú này?`,
+        onConfirm: async () => {
+          setConfirmDialog(null);
+          await labelService.detachLabel(note_id, label_id);
+          // Cập nhật lại danh sách nhãn đang hiển thị trong modal gán nhãn (nếu còn mở)
+          setLabelPickerNoteLabels((prev) =>
+            prev.filter((l) => l.label_id !== label_id),
+          );
+          loadNotes();
+        },
+      });
+      return;
     }
+    await labelService.attachLabel(note_id, label_id);
     loadNotes();
   };
 
@@ -400,7 +441,16 @@ export default function HomePage({ isLogin, setIsLogin }) {
   };
 
   const pinnedNotes = notes.filter((n) => n.is_pinned);
-  const otherNotes = notes.filter((n) => !n.is_pinned);
+  // ⚡ Ở trang chính (view "notes"), loadNotes() đang gộp cả ghi chú Active VÀ
+  // Archived lại với nhau. Sau khi một ghi chú được LƯU TRỮ, nó không nên còn
+  // hiện ở trang chính nữa (đã có mục "Lưu trữ" riêng để xem) — trừ khi ghi chú
+  // đó đang được ghim, thì vẫn luôn hiển thị ở trang chính như cũ. Nhãn (label)
+  // không liên quan tới việc ẩn/hiện này.
+  const otherNotes = notes.filter((n) => {
+    if (n.is_pinned) return false;
+    if (view === "notes" && n.status === "Archived") return false;
+    return true;
+  });
 
   // ⚡ Kiểm tra user có role Admin không (để hiện nút Admin)
   const isAdmin =
@@ -707,6 +757,15 @@ export default function HomePage({ isLogin, setIsLogin }) {
       )}
 
       {toast && <Toast message={toast} />}
+
+      {confirmDialog && (
+        <ConfirmModal
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
 
       {changePasswordOpen && (
         <ChangePasswordModal onClose={() => setChangePasswordOpen(false)} />
