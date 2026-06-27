@@ -26,25 +26,23 @@ export const setReminder = async (req, res) => {
 // Lấy tất cả reminder CỦA ĐÚNG USER ĐANG ĐĂNG NHẬP
 export const getReminders = async (req, res) => {
   try {
-    // ⚡ Không còn fallback về 1 nữa — bắt buộc phải có req.user từ authMiddleware
-    const user_id = req.user?.id;
-    if (!user_id) {
+    const user_id = req.user?.user_id ?? req.user?.id;
+    if (!user_id)
       return res
         .status(401)
         .json({ message: "Khong xac dinh duoc nguoi dung" });
-    }
-
     const result = await sql.query`
-            SELECT r.* FROM Reminders r
-            INNER JOIN Notes n ON r.note_id = n.note_id
-            WHERE n.user_id = ${user_id}
-            `;
+      SELECT r.reminder_id, r.remind_time, r.status,
+             n.note_id, n.title, n.content
+      FROM Reminders r
+      INNER JOIN Notes n ON r.note_id = n.note_id
+      WHERE n.user_id = ${user_id}
+    `;
     return res.status(200).json(result.recordset);
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
 };
-
 // Sửa reminder
 export const updateReminder = async (req, res) => {
   try {
@@ -68,5 +66,39 @@ export const deleteReminder = async (req, res) => {
     res.status(200).json({ message: "Xoa nhac nho thanh cong" });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+};
+// Lấy reminder đến hạn chưa nhắc
+export const getDueReminders = async (req, res) => {
+  try {
+    const user_id = req.user?.user_id ?? req.user?.id;
+    if (!user_id) {
+      return res
+        .status(401)
+        .json({ message: "Khong xac dinh duoc nguoi dung" });
+    }
+    const result = await sql.query`
+      SELECT r.reminder_id, r.remind_time, r.status,
+             n.note_id, n.title, n.content
+      FROM Reminders r
+      INNER JOIN Notes n ON r.note_id = n.note_id
+      WHERE n.user_id = ${user_id}
+        AND r.status = 0
+        AND r.remind_time <= GETDATE()
+    `;
+    return res.status(200).json(result.recordset);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+// Xác nhận đã nhắc
+export const confirmReminder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await sql.query`UPDATE Reminders SET status = 1 WHERE reminder_id = ${id}`;
+    return res.status(200).json({ message: "Xac nhan thanh cong" });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
 };

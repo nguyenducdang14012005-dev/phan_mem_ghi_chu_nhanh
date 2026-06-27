@@ -478,8 +478,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  z-index: 500; /* ⚡ popup thật (Share/Reminder/Confirm/Đổi mật khẩu...) luôn nổi trên note-edit-modal */
   backdrop-filter: blur(2px);
+}
+
+/* ⚡ Overlay riêng của modal xem/sửa ghi chú — z-index THẤP HƠN .modal-overlay
+   để các popup (Share, Reminder, Confirm xóa...) mở từ trong note luôn nổi lên trên,
+   bất kể thứ tự render trong DOM. */
+.modal-overlay.note-edit-overlay {
+  z-index: 200;
 }
 
 .modal-box {
@@ -655,12 +662,12 @@ body {
   background: var(--primary-light);
 }
 .date-picker-popup {
-  position: absolute;
+  position: fixed; /* ⚡ render qua Portal vào document.body -> dùng fixed + top/left tính bằng JS */
   background: #fff;
   border-radius: 16px;
   box-shadow: 0 8px 32px rgba(108, 99, 255, 0.15);
   padding: 20px;
-  z-index: 100;
+  z-index: 600; /* luôn nổi trên cả .modal-overlay (500) và .note-edit-overlay (200) */
   width: 280px;
   border: 1.5px solid var(--border);
 }
@@ -1036,9 +1043,7 @@ body {
 
 /* Bảng chọn màu (giống Keep) */
 .color-picker-popup {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
+  position: fixed; /* ⚡ render qua Portal vào document.body -> dùng fixed + top/left tính bằng JS */
   margin-bottom: 8px;
   background: #fff;
   border: 1px solid var(--border);
@@ -1048,7 +1053,7 @@ body {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 6px;
-  z-index: 50;
+  z-index: 600; /* luôn nổi trên cả .modal-overlay (500) và .note-edit-overlay (200) */
   width: 188px;
 }
 

@@ -10,5 +10,11 @@ export async function createReminder(payload) {
     body: JSON.stringify(payload),
   });
 }
+export async function updateReminder(id, payload) {
+  return apiFetch(`${API}/reminders/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
 
-export default { getReminders, createReminder };
+export default { getReminders, createReminder, updateReminder };

@@ -14,6 +14,7 @@ import LabelPickerModal from "../components/LabelPickerModal";
 import ConfirmModal from "../components/ConfirmModal";
 import ChangePasswordModal from "../components/ChangePasswordModal";
 import Toast from "../components/Toast";
+import ReminderPopup from "../components/ReminderPopup";
 
 // ⚡ IMPORT: Admin Dashboard page
 import AdminDashboardPage from "./AdminDashboardPage";
@@ -66,6 +67,10 @@ export default function HomePage({ isLogin, setIsLogin }) {
   const [viewingNote, setViewingNote] = useState(null);
   const [pendingShares, setPendingShares] = useState([]);
   const [mySharedNotes, setMySharedNotes] = useState([]);
+  const [dueReminders, setDueReminders] = useState([]);
+  const [showLoginPass, setShowLoginPass] = useState(false);
+  const [showRegisterPass, setShowRegisterPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
 
   useEffect(() => {
     loadNotes();
@@ -234,13 +239,16 @@ export default function HomePage({ isLogin, setIsLogin }) {
     try {
       const data = await reminderService.getReminders();
       const now = new Date();
-      data.forEach((r) => {
-        const remindTime = new Date(r.remind_time);
-        const diff = remindTime - now;
-        remindTime.setHours(remindTime.getHours() + 7);
-        if (diff > 0 && diff <= 10000) showToast("Đã đến giờ nhắc nhở!");
-      });
-    } catch {}
+      const due = data
+        .filter((r) => {
+          const t = new Date(r.remind_time);
+          return t <= now && r.status == 0;
+        })
+        .slice(0, 3); // Chỉ hiện tối đa 3 popup
+      if (due.length > 0) setDueReminders(due);
+    } catch (err) {
+      console.log("Lỗi checkReminders:", err);
+    }
   };
 
   const handleSearch = (val) => {
@@ -352,16 +360,24 @@ export default function HomePage({ isLogin, setIsLogin }) {
   const changeStatus = async (id, status) => {
     const note = notes.find((n) => n.note_id === id);
     const isArchiveAction = status === "Archived";
-    const isUnarchiveAction = status === "Active" && note?.status === "Archived";
+    const isUnarchiveAction =
+      status === "Active" && note?.status === "Archived";
+    const isDeleteAction = status === "Deleted";
 
-    // ⚡ Lưu trữ / hủy lưu trữ làm ghi chú ẩn/hiện lại ở trang chính
-    // -> hỏi xác nhận trước khi thực hiện.
-    if (isArchiveAction || isUnarchiveAction) {
+    // ⚡ Lưu trữ / hủy lưu trữ / xóa (chuyển vào thùng rác) đều là hành động
+    // làm ghi chú ẩn khỏi trang chính -> luôn hỏi xác nhận trước khi thực hiện.
+    if (isArchiveAction || isUnarchiveAction || isDeleteAction) {
       setConfirmDialog({
-        title: isArchiveAction ? "Lưu trữ ghi chú" : "Hủy lưu trữ",
+        title: isArchiveAction
+          ? "Lưu trữ ghi chú"
+          : isDeleteAction
+            ? "Xóa ghi chú"
+            : "Hủy lưu trữ",
         message: isArchiveAction
           ? "Sau khi lưu trữ, ghi chú này sẽ không còn hiển thị ở trang chính nữa (trừ khi được ghim). Bạn có chắc muốn lưu trữ?"
-          : "Ghi chú sẽ hiển thị lại ở trang chính sau khi hủy lưu trữ. Bạn có chắc muốn tiếp tục?",
+          : isDeleteAction
+            ? "Bạn có chắc muốn xóa ghi chú này không?"
+            : "Ghi chú sẽ hiển thị lại ở trang chính sau khi hủy lưu trữ. Bạn có chắc muốn tiếp tục?",
         onConfirm: () => {
           setConfirmDialog(null);
           doChangeStatus(id, status);
@@ -438,6 +454,24 @@ export default function HomePage({ isLogin, setIsLogin }) {
     } catch {
       showToast("Lỗi khi lưu ghi chú");
     }
+  };
+  const handleConfirmReminder = async (id) => {
+    try {
+      await reminderService.updateReminder(id, {
+        status: 1,
+        remind_time: new Date().toISOString(),
+      });
+      setDueReminders((prev) => prev.filter((r) => r.reminder_id !== id));
+    } catch {}
+  };
+  const handleRescheduleReminder = async (id, newTime) => {
+    try {
+      await reminderService.updateReminder(id, {
+        status: 0,
+        remind_time: newTime,
+      });
+      setDueReminders((prev) => prev.filter((r) => r.reminder_id !== id));
+    } catch {}
   };
 
   const pinnedNotes = notes.filter((n) => n.is_pinned);
@@ -818,6 +852,11 @@ export default function HomePage({ isLogin, setIsLogin }) {
           }}
         />
       )}
+      <ReminderPopup
+        reminders={dueReminders}
+        onConfirm={handleConfirmReminder}
+        onReschedule={handleRescheduleReminder}
+      />
     </div>
   );
 }

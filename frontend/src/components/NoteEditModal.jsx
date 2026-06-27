@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import { NOTE_COLORS, getLabelColor } from "../constants/noteColors.js";
@@ -35,7 +36,35 @@ export default function NoteEditModal({
   );
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const dirtyRef = useRef(false);
+
+  // ⚡ Vị trí (top/left tính theo viewport) để render popup qua Portal,
+  // tránh bị .note-edit-modal { overflow: hidden } / .note-edit-body { overflow-y: auto } cắt mất
+  const [datePickerPos, setDatePickerPos] = useState({ top: 0, left: 0 });
+  const [colorPickerPos, setColorPickerPos] = useState({ top: 0, left: 0 });
+  const dateTriggerRef = useRef(null);
+  const colorTriggerRef = useRef(null);
+
+  const openDatePicker = () => {
+    const rect = dateTriggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      setDatePickerPos({ top: rect.bottom + 6, left: rect.left });
+    }
+    setDatePickerOpen(true);
+  };
+
+  const openColorPicker = () => {
+    const rect = colorTriggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      // Popup cao ~210px -> mở LÊN TRÊN nút bấm (giống Google Keep), trừ khi không đủ chỗ
+      const popupHeight = 210;
+      const top =
+        rect.top - popupHeight > 0 ? rect.top - popupHeight - 8 : rect.bottom + 8;
+      setColorPickerPos({ top, left: rect.left });
+    }
+    setColorPickerOpen((v) => !v);
+  };
 
   // ID duy nhất cho toolbar div — tránh xung đột nếu render nhiều modal
   const toolbarId = useRef(`ql-toolbar-modal-${note.note_id}`).current;
@@ -71,7 +100,7 @@ export default function NoteEditModal({
   };
 
   return (
-    <div className="modal-overlay" onClick={handleClose}>
+    <div className="modal-overlay note-edit-overlay" onClick={handleClose}>
       <div
         className="note-edit-modal"
         style={{ backgroundColor: color }}
@@ -161,9 +190,10 @@ export default function NoteEditModal({
           {/* Hạn chót */}
           {note.due_time && !dueTime && !datePickerOpen && !isReadOnly && (
             <div
+              ref={dateTriggerRef}
               className="note-due-time"
               style={{ cursor: "pointer", marginLeft: 4 }}
-              onClick={() => setDatePickerOpen(true)}
+              onClick={openDatePicker}
             >
               <img
                 src="/images/timer.png"
@@ -181,12 +211,13 @@ export default function NoteEditModal({
           )}
           {dueTime && !datePickerOpen && (
             <div
+              ref={dateTriggerRef}
               className="note-due-time"
               style={{
                 cursor: isReadOnly ? "default" : "pointer",
                 marginLeft: 4,
               }}
-              onClick={() => !isReadOnly && setDatePickerOpen(true)}
+              onClick={() => !isReadOnly && openDatePicker()}
             >
               <img
                 src="/images/timer.png"
@@ -204,6 +235,7 @@ export default function NoteEditModal({
           )}
           {!note.due_time && !dueTime && !datePickerOpen && !isReadOnly && (
             <button
+              ref={dateTriggerRef}
               className="card-btn"
               style={{
                 marginLeft: 4,
@@ -212,61 +244,70 @@ export default function NoteEditModal({
                 color: "#5f6368",
               }}
               title="Thêm hạn chót"
-              onClick={() => setDatePickerOpen(true)}
+              onClick={openDatePicker}
             >
               + Thêm hạn chót
             </button>
           )}
-          {datePickerOpen && !isReadOnly && (
-            <div className="date-picker-popup">
-              <div className="date-picker-header">
-                <span>← Chọn ngày và giờ</span>
-              </div>
-              <div className="date-picker-body">
-                <input
-                  type="date"
-                  className="date-input"
-                  value={dueTime.split("T")[0] || ""}
-                  onChange={(e) =>
-                    setDueTime(
-                      e.target.value + "T" + (dueTime.split("T")[1] || "00:00"),
-                    )
-                  }
-                />
-                <input
-                  type="time"
-                  className="time-input"
-                  value={dueTime.split("T")[1] || ""}
-                  onChange={(e) =>
-                    setDueTime(
-                      (dueTime.split("T")[0] || "") + "T" + e.target.value,
-                    )
-                  }
-                />
-              </div>
-              <div className="date-picker-footer">
-                <button
-                  className="close-btn"
-                  onClick={() => {
-                    setDueTime("");
-                    setDatePickerOpen(false);
-                    markDirty();
-                  }}
-                >
-                  Xóa
-                </button>
-                <button
-                  className="btn-share"
-                  onClick={() => {
-                    setDatePickerOpen(false);
-                    markDirty();
-                  }}
-                >
-                  Lưu
-                </button>
-              </div>
-            </div>
-          )}
+          {datePickerOpen &&
+            !isReadOnly &&
+            createPortal(
+              <div
+                className="date-picker-popup"
+                style={{ top: datePickerPos.top, left: datePickerPos.left }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="date-picker-header">
+                  <span>← Chọn ngày và giờ</span>
+                </div>
+                <div className="date-picker-body">
+                  <input
+                    type="date"
+                    className="date-input"
+                    value={dueTime.split("T")[0] || ""}
+                    onChange={(e) =>
+                      setDueTime(
+                        e.target.value +
+                          "T" +
+                          (dueTime.split("T")[1] || "00:00"),
+                      )
+                    }
+                  />
+                  <input
+                    type="time"
+                    className="time-input"
+                    value={dueTime.split("T")[1] || ""}
+                    onChange={(e) =>
+                      setDueTime(
+                        (dueTime.split("T")[0] || "") + "T" + e.target.value,
+                      )
+                    }
+                  />
+                </div>
+                <div className="date-picker-footer">
+                  <button
+                    className="close-btn"
+                    onClick={() => {
+                      setDueTime("");
+                      setDatePickerOpen(false);
+                      markDirty();
+                    }}
+                  >
+                    Xóa
+                  </button>
+                  <button
+                    className="btn-share"
+                    onClick={() => {
+                      setDatePickerOpen(false);
+                      markDirty();
+                    }}
+                  >
+                    Lưu
+                  </button>
+                </div>
+              </div>,
+              document.body,
+            )}
         </div>
 
         {/* ── Footer: action buttons ─────────────────────────────────── */}
@@ -284,9 +325,10 @@ export default function NoteEditModal({
                 {/* Màu nền */}
                 <div style={{ position: "relative" }}>
                   <button
+                    ref={colorTriggerRef}
                     className="icon-btn"
                     title="Đổi màu"
-                    onClick={() => setColorPickerOpen((v) => !v)}
+                    onClick={openColorPicker}
                   >
                     <img
                       src="/images/palette.png"
@@ -294,24 +336,33 @@ export default function NoteEditModal({
                       style={{ width: 18, height: 18, objectFit: "contain" }}
                     />
                   </button>
-                  {colorPickerOpen && (
-                    <div className="color-picker-popup">
-                      {NOTE_COLORS.map((c) => (
-                        <button
-                          key={c.value}
-                          type="button"
-                          title={c.name}
-                          className={`color-dot ${color === c.value ? "selected" : ""}`}
-                          style={{ backgroundColor: c.value }}
-                          onClick={() => {
-                            setColor(c.value);
-                            markDirty();
-                            setColorPickerOpen(false);
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
+                  {colorPickerOpen &&
+                    createPortal(
+                      <div
+                        className="color-picker-popup"
+                        style={{
+                          top: colorPickerPos.top,
+                          left: colorPickerPos.left,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {NOTE_COLORS.map((c) => (
+                          <button
+                            key={c.value}
+                            type="button"
+                            title={c.name}
+                            className={`color-dot ${color === c.value ? "selected" : ""}`}
+                            style={{ backgroundColor: c.value }}
+                            onClick={() => {
+                              setColor(c.value);
+                              markDirty();
+                              setColorPickerOpen(false);
+                            }}
+                          />
+                        ))}
+                      </div>,
+                      document.body,
+                    )}
                 </div>
                 {/* Nhắc nhở */}
                 <button
@@ -422,7 +473,7 @@ export default function NoteEditModal({
                     )}
                     <button
                       className="card-btn"
-                      onClick={() => handleStatusClick("Deleted")}
+                      onClick={() => setDeleteConfirmOpen(true)}
                     >
                       <img
                         src="/images/trash.png"
@@ -441,6 +492,53 @@ export default function NoteEditModal({
           </div>
         </div>
       </div>
+
+      {/* ⚡ Xác nhận xóa — portal ra document.body, nổi trên TẤT CẢ (modal note,
+          các popup khác...), có nền mờ riêng, đóng khi bấm Hủy hoặc bấm ra ngoài */}
+      {deleteConfirmOpen &&
+        createPortal(
+          <div
+            className="modal-overlay"
+            style={{ zIndex: 700 }}
+            onClick={() => setDeleteConfirmOpen(false)}
+          >
+            <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <span>Xóa ghi chú</span>
+                <button
+                  className="icon-btn"
+                  onClick={() => setDeleteConfirmOpen(false)}
+                >
+                  ✖
+                </button>
+              </div>
+              <div className="modal-body">
+                <p style={{ margin: 0 }}>
+                  Bạn có chắc muốn xóa ghi chú này không?
+                </p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  className="close-btn"
+                  onClick={() => setDeleteConfirmOpen(false)}
+                >
+                  Hủy
+                </button>
+                <button
+                  className="btn-share"
+                  style={{ background: "#d64545" }}
+                  onClick={() => {
+                    setDeleteConfirmOpen(false);
+                    handleStatusClick("Deleted");
+                  }}
+                >
+                  Xóa
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
