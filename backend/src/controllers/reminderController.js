@@ -1,7 +1,15 @@
 import sql from "../config/db.js";
 
-function vnToUTC(localStr) {
-  return new Date(new Date(localStr).getTime() - 7 * 60 * 60 * 1000);
+// Nhận chuỗi datetime-local từ frontend (vd: "2026-06-28T22:30")
+// Gắn offset +07:00 để JS tự convert sang UTC chuẩn trước khi lưu vào SQL Server
+function parseLocalTime(localStr) {
+  if (!localStr) return null;
+  // Nếu đã có timezone info thì parse trực tiếp
+  if (localStr.includes("+") || localStr.endsWith("Z")) {
+    return new Date(localStr);
+  }
+  // Gắn +07:00 (giờ Việt Nam) vào chuỗi datetime-local
+  return new Date(localStr + ":00+07:00");
 }
 
 // POST /api/reminders
@@ -12,7 +20,7 @@ export const setReminder = async (req, res) => {
     if (!remind_time)
       return res.status(400).json({ message: "remind_time không có" });
 
-    const utcTime = vnToUTC(remind_time);
+    const utcTime = parseLocalTime(remind_time);
     await sql.query`
       INSERT INTO Reminders (note_id, remind_time, status)
       VALUES (${note_id}, ${utcTime}, 0)
@@ -55,7 +63,7 @@ export const updateReminder = async (req, res) => {
   try {
     const { id } = req.params;
     const { remind_time, status } = req.body;
-    const utcTime = remind_time ? vnToUTC(remind_time) : null;
+    const utcTime = remind_time ? parseLocalTime(remind_time) : null;
 
     // 🛠️ ĐÃ FIX: Dùng ISNULL chuẩn SQL Server
     await sql.query`

@@ -263,11 +263,13 @@ export default function HomePage({ isLogin, setIsLogin }) {
       const now = new Date();
       const due = data
         .filter((r) => {
-          const t = new Date(r.remind_time);
-          console.log("Giờ hiện tại:", now);
-          console.log("Giờ nhắc:", t);
-          console.log("So sánh:", t <= now);
-
+          // SQL Server trả về chuỗi không có timezone suffix (vd: "2026-06-28T15:30:00.000")
+          // Nếu không gắn "Z", browser VN sẽ parse sai thành giờ local thay vì UTC
+          const timeStr =
+            r.remind_time.endsWith("Z") || r.remind_time.includes("+")
+              ? r.remind_time
+              : r.remind_time + "Z";
+          const t = new Date(timeStr);
           return t <= now && r.status == 0;
         })
         .slice(0, 3); // Chỉ hiện tối đa 3 popup
@@ -287,19 +289,27 @@ export default function HomePage({ isLogin, setIsLogin }) {
     if (!reminderTime) return showToast("Vui lòng chọn thời gian");
     try {
       const data = await reminderService.getReminders();
-      const trung = data.find((r) => {
-        const dbTime = new Date(r.remind_time);
-        dbTime.setHours(dbTime.getHours() + 7);
-        return dbTime.toISOString().slice(0, 16) === reminderTime;
-      });
-      if (trung) return showToast("Đã có nhắc nhở vào giờ này rồi!");
-    } catch {}
-    try {
-      await reminderService.createReminder({
-        note_id: reminderNoteId,
-        remind_time: reminderTime,
-      });
-      showToast("Đã đặt nhắc nhở");
+
+      // Tìm reminder đang active của đúng note này
+      const existing = data.find(
+        (r) => r.note_id === reminderNoteId && r.status == 0,
+      );
+
+      if (existing) {
+        // Note đã có reminder → UPDATE thay vì tạo mới
+        await reminderService.updateReminder(existing.reminder_id, {
+          remind_time: reminderTime,
+        });
+        showToast("Đã cập nhật nhắc nhở");
+      } else {
+        // Chưa có reminder → tạo mới
+        await reminderService.createReminder({
+          note_id: reminderNoteId,
+          remind_time: reminderTime,
+        });
+        showToast("Đã đặt nhắc nhở");
+      }
+
       setReminderOpen(false);
       setReminderTime("");
     } catch {

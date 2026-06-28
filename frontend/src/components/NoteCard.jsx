@@ -78,7 +78,9 @@ export default function NoteCard({
         >
           🔔{" "}
           {new Date(
-            new Date(note.remind_time).getTime() + 7 * 60 * 60 * 1000,
+            note.remind_time.endsWith("Z")
+              ? note.remind_time
+              : note.remind_time + "Z",
           ).toLocaleString("vi-VN", {
             day: "2-digit",
             month: "2-digit",
