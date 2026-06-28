@@ -3,19 +3,6 @@ import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import { NOTE_COLORS } from "../constants/noteColors.js";
 
-const modules = { toolbar: { container: "#custom-toolbar" } };
-const formats = [
-  "header",
-  "bold",
-  "italic",
-  "underline",
-  "strike",
-  "color",
-  "background",
-  "list",
-  "bullet",
-  "align",
-];
 const colorList = [
   "#000000",
   "#e60000",
@@ -38,6 +25,35 @@ const colorList = [
   "#66b966",
   "#66a3e0",
   "#c285ff",
+];
+
+// Dùng toolbar array thay vì container:"#id"
+// Quill tự render toolbar vào trong .ql-container — picker hoạt động đúng
+// (container:"#id" bị clip bởi overflow:hidden của parent)
+const modules = {
+  toolbar: {
+    container: [
+      [{ header: [1, 2, false] }],
+      ["bold", "italic", "underline", "strike"],
+      [{ color: colorList }, { background: colorList }],
+      [{ list: "ordered" }, { list: "bullet" }],
+      [{ align: [] }],
+      ["clean"],
+    ],
+  },
+};
+
+const formats = [
+  "header",
+  "bold",
+  "italic",
+  "underline",
+  "strike",
+  "color",
+  "background",
+  "list",
+  "bullet",
+  "align",
 ];
 
 const getLocalDateTimeString = () => {
@@ -78,7 +94,7 @@ export default function NoteComposer({
 
   return (
     <div className="composer-wrapper">
-      <style>{`.ql-snow .ql-picker.ql-color-picker .ql-picker-options { z-index: 9999 !important; pointer-events: auto !important; } .quill-wrapper-direct .ql-editor span[style*="color"] { color: inherit; }`}</style>
+      <style>{`.ql-snow .ql-picker.ql-color-picker .ql-picker-options { z-index: 9999 !important; pointer-events: auto !important; }`}</style>
       {!composerOpen ? (
         <div
           className="composer-collapsed"
@@ -98,52 +114,7 @@ export default function NoteComposer({
             onChange={(e) => setNewTitle(e.target.value)}
           />
 
-          {/* Toolbar */}
-          <div
-            id="custom-toolbar"
-            className="ql-toolbar ql-snow"
-            style={{
-              border: "none",
-              background: "rgba(0,0,0,0.02)",
-              overflow: "visible",
-            }}
-          >
-            <span className="ql-formats">
-              <select className="ql-header" defaultValue="">
-                <option value="1">Tiêu đề 1</option>
-                <option value="2">Tiêu đề 2</option>
-                <option value="">Văn bản</option>
-              </select>
-            </span>
-            <span className="ql-formats">
-              <button className="ql-bold" />
-              <button className="ql-italic" />
-              <button className="ql-underline" />
-              <button className="ql-strike" />
-            </span>
-            <span className="ql-formats" style={{ overflow: "visible" }}>
-              <select className="ql-color">
-                {colorList.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </select>
-              <select className="ql-background">
-                {colorList.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </select>
-            </span>
-            <span className="ql-formats">
-              <button className="ql-list" value="ordered" />
-              <button className="ql-list" value="bullet" />
-            </span>
-            <span className="ql-formats">
-              <select className="ql-align" />
-            </span>
-            <span className="ql-formats">
-              <button className="ql-clean" />
-            </span>
-          </div>
+          {/* Toolbar do Quill tự render bên trong — không cần custom HTML */}
 
           <div className="composer-body" style={{ display: "block" }}>
             <div className="quill-wrapper-direct" style={{ color: "initial" }}>

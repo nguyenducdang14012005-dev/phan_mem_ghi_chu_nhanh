@@ -4,6 +4,30 @@ import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import { NOTE_COLORS, getLabelColor } from "../constants/noteColors.js";
 
+const colorList = [
+  "#000000",
+  "#e60000",
+  "#ff9900",
+  "#ffff00",
+  "#008a00",
+  "#0066cc",
+  "#9933ff",
+  "#ffffff",
+  "#facccc",
+  "#ffebcc",
+  "#ffffcc",
+  "#cce8cc",
+  "#cce0f5",
+  "#ebd6ff",
+  "#bbbbbb",
+  "#f06666",
+  "#ffc266",
+  "#ffff66",
+  "#66b966",
+  "#66a3e0",
+  "#c285ff",
+];
+
 const formats = [
   "header",
   "bold",
@@ -15,6 +39,17 @@ const formats = [
   "list",
   "bullet",
   "align",
+];
+
+// toolbar array — Quill tự render toolbar vào trong .ql-container
+// tránh bị clip bởi overflow:hidden của .note-edit-modal
+const toolbarOptions = [
+  [{ header: [1, 2, false] }],
+  ["bold", "italic", "underline", "strike"],
+  [{ color: colorList }, { background: colorList }],
+  [{ list: "ordered" }, { list: "bullet" }],
+  [{ align: [] }],
+  ["clean"],
 ];
 
 export default function NoteEditModal({
@@ -70,9 +105,13 @@ export default function NoteEditModal({
   const isReadOnly = note.permission === "view";
   const isSharedUser = note.permission !== undefined; // KIỂM TRA NGƯỜI ĐƯỢC CHIA SẺ
 
-  const modules = {
-    toolbar: isReadOnly ? false : { container: `#${toolbarId}` },
-  };
+  // modules dùng toolbar array — stable, không tạo lại mỗi render
+  const modules = React.useMemo(
+    () => ({
+      toolbar: isReadOnly ? false : { container: toolbarOptions },
+    }),
+    [isReadOnly],
+  );
 
   const markDirty = () => {
     dirtyRef.current = true;
@@ -135,41 +174,7 @@ export default function NoteEditModal({
           </button>
         </div>
 
-        {/* ── Toolbar: Giữ nguyên form gốc cũ của bạn ── */}
-        {!isReadOnly && (
-          <div
-            id={toolbarId}
-            className="ql-toolbar ql-snow note-edit-toolbar-sticky"
-          >
-            <span className="ql-formats">
-              <select className="ql-header" defaultValue="">
-                <option value="1" />
-                <option value="2" />
-                <option value="" />
-              </select>
-            </span>
-            <span className="ql-formats">
-              <button className="ql-bold" />
-              <button className="ql-italic" />
-              <button className="ql-underline" />
-              <button className="ql-strike" />
-            </span>
-            <span className="ql-formats">
-              <select className="ql-color" />
-              <select className="ql-background" />
-            </span>
-            <span className="ql-formats">
-              <button className="ql-list" value="ordered" />
-              <button className="ql-list" value="bullet" />
-            </span>
-            <span className="ql-formats">
-              <select className="ql-align" />
-            </span>
-            <span className="ql-formats">
-              <button className="ql-clean" />
-            </span>
-          </div>
-        )}
+        {/* Toolbar do Quill tự render bên trong .note-edit-body */}
 
         {/* ── Body: Form gốc soạn thảo văn bản ── */}
         <div className="note-edit-body">

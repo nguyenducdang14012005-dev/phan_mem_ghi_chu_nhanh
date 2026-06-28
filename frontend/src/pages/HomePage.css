@@ -263,10 +263,13 @@ body {
   font-family: inherit;
 }
 
-/* Quill tự render thêm 1 toolbar ẩn — ẩn nó đi,
-   toolbar thật đã render ở #composer-toolbar-fixed */
+/* Quill tự render toolbar bên trong — hiển thị và style đúng vị trí */
 .composer-body .ql-toolbar.ql-snow {
-  display: none;
+  border: none !important;
+  border-bottom: 1px solid var(--border) !important;
+  background: rgba(0, 0, 0, 0.02);
+  padding: 6px 12px;
+  overflow: visible;
 }
 
 /* Editor mở rộng tự nhiên trong vùng cuộn */
@@ -278,6 +281,14 @@ body {
   min-height: 200px;
   height: auto !important;
   overflow-y: visible !important;
+}
+
+/* Cho phép màu chữ/nền do Quill áp dụng hiển thị đúng */
+.composer-body .ql-editor span[style*="color"] {
+  color: unset;
+}
+.composer-body .ql-editor span[style] {
+  color: revert-layer;
 }
 
 .composer-body .ql-editor.ql-blank::before {
@@ -1001,9 +1012,17 @@ body {
   font-family: inherit;
 }
 
-/* Quill tự render toolbar ẩn bên trong — ẩn nó đi */
+/* Quill tự render toolbar bên trong — hiển thị và style đúng */
 .note-edit-body .ql-toolbar.ql-snow {
-  display: none;
+  border: none !important;
+  border-bottom: 1px solid var(--border) !important;
+  background: transparent;
+  padding: 6px 12px;
+  overflow: visible;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #fff;
 }
 
 .note-edit-body .ql-editor {
@@ -1014,6 +1033,14 @@ body {
   min-height: 200px;
   height: auto !important;
   overflow-y: visible !important;
+}
+
+/* Cho phép màu chữ/nền do Quill áp dụng hiển thị đúng */
+.note-edit-body .ql-editor span[style*="color"] {
+  color: unset;
+}
+.note-edit-body .ql-editor span[style] {
+  color: revert-layer;
 }
 
 .note-edit-footer {
