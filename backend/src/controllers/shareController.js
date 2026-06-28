@@ -26,8 +26,8 @@ async function sendMail(to, subject, html) {
 
 /**
  * 1. Người sở hữu note chia sẻ note cho người khác
- *    - permission: 'view' | 'edit' | 'delete'
- *    - share_status mặc định: 'Pending' (chờ người nhận phản hồi)
+ * - permission: 'view' | 'edit' | 'delete'
+ * - share_status mặc định: 'Pending' (chờ người nhận phản hồi)
  */
 export const shareNode = async (req, res) => {
   try {
@@ -114,9 +114,9 @@ export const shareNode = async (req, res) => {
 
 /**
  * 2. Người được chia sẻ CHẤP NHẬN lời mời
- *    - cập nhật share_status = 'Accepted'
- *    - note sẽ hiển thị với quyền tương ứng cho người này
- *    - thông báo lại cho người chia sẻ (owner) rằng đã được chấp nhận
+ * - cập nhật share_status = 'Accepted'
+ * - note sẽ hiển thị với quyền tương ứng cho người này
+ * - thông báo lại cho người chia sẻ (owner) rằng đã được chấp nhận
  */
 export const acceptShare = async (req, res) => {
   try {
@@ -175,9 +175,9 @@ export const acceptShare = async (req, res) => {
 
 /**
  * 3. Người được chia sẻ TỪ CHỐI lời mời
- *    - cập nhật share_status = 'Rejected'
- *    - không có gì thay đổi về quyền truy cập note
- *    - thông báo lại cho người chia sẻ (owner) rằng đã bị từ chối
+ * - cập nhật share_status = 'Rejected'
+ * - không có gì thay đổi về quyền truy cập note
+ * - thông báo lại cho người chia sẻ (owner) rằng đã bị từ chối
  */
 export const rejectShare = async (req, res) => {
   try {
@@ -253,10 +253,12 @@ export const getShares = async (req, res) => {
 
 /**
  * 5. Lấy danh sách thông báo của người dùng hiện tại (người được chia sẻ):
- *    - 'Pending'  -> lời mời chia sẻ mới, cần Chấp nhận / Từ chối
- *    - 'Revoked'  -> thông báo "đã dừng chia sẻ" (chỉ mang tính thông tin)
- *    -> dùng để hiển thị "thông báo" (chuông) cho người được chia sẻ
+ * - 'Pending'  -> lời mời chia sẻ mới, cần Chấp nhận / Từ chối
+ * - 'Revoked'  -> thông báo "đã dừng chia sẻ" (chỉ mang tính thông tin)
+ * -> dùng để hiển thị "thông báo" (chuông) cho người được chia sẻ
  */
+
+// ⚡ SỬA LẠI TRONG backend/src/controllers/shareController.js
 export const getPendingSharesForUser = async (req, res) => {
   try {
     const currentUserId = req.user.user_id;
@@ -268,7 +270,8 @@ export const getPendingSharesForUser = async (req, res) => {
             INNER JOIN Notes n ON ns.note_id = n.note_id
             INNER JOIN Users u ON n.user_id = u.user_id
             WHERE ns.user_id = ${currentUserId}
-              AND ns.share_status IN ('Pending', 'Revoked')
+              -- ⚡ ĐÃ SỬA: Lời mời mới (Pending), tin hủy (Revoked chưa xem), và tin đổi quyền (Accepted) luôn luôn hiện ở chuông để đọc
+              AND (ns.share_status IN ('Pending', 'Accepted') OR (ns.share_status = 'Revoked' AND ns.seen = 0))
             ORDER BY ns.share_id DESC
         `;
     return res.status(200).json(result.recordset);
@@ -276,19 +279,28 @@ export const getPendingSharesForUser = async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 };
-
 /**
- * 6. Lấy danh sách note mà người dùng hiện tại đã được chia sẻ và đã Accepted
- *    -> đây là các note sẽ hiển thị trong mục "Được chia sẻ với tôi" cùng quyền tương ứng
+ * 6. ⚡ ĐÃ CẬP NHẬT: Lấy danh sách ghi chú đã Accepted kèm theo thông tin người chia sẻ và hạn chót (due_time)
  */
 export const getAcceptedSharedNotes = async (req, res) => {
   try {
     const currentUserId = req.user.user_id;
     const result = await sql.query`
-            SELECT n.note_id, n.title, n.content, ns.permission, ns.share_status
+            SELECT 
+                n.note_id, 
+                n.title, 
+                n.content, 
+                n.due_time, -- ⚡ ĐÃ BỔ SUNG: lấy thời gian hạn chót của ghi chú
+                ns.share_id,
+                ns.permission, 
+                ns.share_status,
+                u.email AS shared_by_email, 
+                u.full_name AS shared_by_name
             FROM Note_Shares ns
             INNER JOIN Notes n ON ns.note_id = n.note_id
-            WHERE ns.user_id = ${currentUserId} AND ns.share_status = 'Accepted'
+            INNER JOIN Users u ON n.user_id = u.user_id
+            WHERE ns.user_id = ${currentUserId} 
+              AND ns.share_status = 'Accepted'
         `;
     return res.status(200).json(result.recordset);
   } catch (error) {
@@ -298,7 +310,7 @@ export const getAcceptedSharedNotes = async (req, res) => {
 
 /**
  * 7. Owner xem lại tất cả các note mình đã chia sẻ (cho ai, quyền gì, trạng thái Pending/Accepted/Rejected)
- *    -> dùng để hiển thị danh sách "Note tôi đã chia sẻ" kèm nút "Dừng chia sẻ"
+ * -> dùng để hiển thị danh sách "Note tôi đã chia sẻ" kèm nút "Dừng chia sẻ"
  */
 export const getMySharedNotes = async (req, res) => {
   try {
@@ -321,10 +333,10 @@ export const getMySharedNotes = async (req, res) => {
 
 /**
  * 8. Dừng chia sẻ một lượt chia sẻ
- *    - Chỉ owner của note (người đã chia sẻ) mới được quyền dừng chia sẻ
- *    - Người được chia sẻ mất quyền truy cập note ngay lập tức
- *    - KHÔNG xoá hẳn bản ghi -> chuyển share_status = 'Revoked' để lưu lại
- *      thành thông báo "đã dừng chia sẻ" cho người được chia sẻ biết
+ * - Chỉ owner của note (người đã chia sẻ) mới được quyền dừng chia sẻ
+ * - Người được chia sẻ mất quyền truy cập note ngay lập tức
+ * - KHÔNG xoá hẳn bản ghi -> chuyển share_status = 'Revoked' để lưu lại
+ * thành thông báo "đã dừng chia sẻ" cho người được chia sẻ biết
  */
 export const removeShare = async (req, res) => {
   try {
@@ -378,7 +390,7 @@ export const removeShare = async (req, res) => {
 
 /**
  * 9. Đánh dấu các thông báo "đã dừng chia sẻ" (Revoked) là đã xem
- *    -> gọi khi người dùng mở chuông thông báo, để xoá số đếm badge
+ * - gọi khi người dùng mở chuông thông báo, để xoá số đếm badge
  */
 export const markNotificationsSeen = async (req, res) => {
   try {
@@ -386,9 +398,55 @@ export const markNotificationsSeen = async (req, res) => {
     await sql.query`
             UPDATE Note_Shares
             SET seen = 1
-            WHERE user_id = ${currentUserId} AND share_status = 'Revoked' AND seen = 0
-        `;
+            WHERE user_id = ${currentUserId} AND seen = 0
+        `; // ⚡ ĐÃ SỬA: Cập nhật toàn bộ thông báo chưa xem về thành đã xem
     return res.status(200).json({ message: "Đã đánh dấu đã xem" });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+/**
+ * 10. 🆕 BỔ SUNG: Owner thay đổi quyền truy cập của một người đã được chia sẻ
+ * - Cập nhật permission: 'view' | 'edit' | 'delete'
+ * - Tự động gửi mail thông báo quyền mới cho người nhận
+ */
+export const updateSharePermission = async (req, res) => {
+  try {
+    const { share_id } = req.params;
+    const { permission } = req.body;
+    const currentUserId = req.user.user_id;
+
+    const validPermissions = ["view", "edit", "delete"];
+    if (!validPermissions.includes(permission)) {
+      return res.status(400).json({ message: "Permission không hợp lệ" });
+    }
+
+    const shareResult = await sql.query`
+            SELECT ns.*, n.user_id AS owner_id, n.title
+            FROM Note_Shares ns
+            INNER JOIN Notes n ON ns.note_id = n.note_id
+            WHERE ns.share_id = ${share_id}
+        `;
+
+    if (shareResult.recordset.length === 0) {
+      return res.status(404).json({ message: "Không tìm thấy lượt chia sẻ" });
+    }
+    const share = shareResult.recordset[0];
+
+    if (share.owner_id !== currentUserId) {
+      return res.status(403).json({ message: "Bạn không có quyền chỉnh sửa" });
+    }
+
+    // ⚡ CẬP NHẬT: Đổi quyền, đồng thời set seen = 0 để nó biến thành một thông báo mới ở Chuông
+    await sql.query`
+            UPDATE Note_Shares
+            SET permission = ${permission}, seen = 0
+            WHERE share_id = ${share_id}
+        `;
+
+    return res
+      .status(200)
+      .json({ message: "Đã cập nhật quyền và phát thông báo ở chuông" });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }

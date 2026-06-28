@@ -48,6 +48,15 @@ export async function removeShare(share_id) {
   return apiFetch(`${API}/shares/${share_id}`, { method: "DELETE" });
 }
 
+// ⚡ ĐÃ SỬA: Chuyển từ axios sang apiFetch đồng bộ với hệ thống của bạn
+export async function updateSharePermission(shareId, permission) {
+  return apiFetch(`${API}/shares/change-permission/${shareId}`, {
+    method: "PUT",
+    body: JSON.stringify({ permission }),
+  });
+}
+
+// Đừng quên add vào object export default nếu bạn export dạng default
 export default {
   shareNote,
   getShares,
@@ -58,4 +67,5 @@ export default {
   acceptShare,
   rejectShare,
   removeShare,
+  updateSharePermission,
 };

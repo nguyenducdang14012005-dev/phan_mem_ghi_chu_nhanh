@@ -42,8 +42,10 @@ export default function NoteCard({
         dangerouslySetInnerHTML={{ __html: note.content }}
       />
 
+      {/* 1. Khu vực hiển thị Hạn Chót */}
       {note.due_time && (
         <div className="note-due-time">
+          ⏰ Hạn chót:{" "}
           {new Date(note.due_time).toLocaleString("vi-VN", {
             day: "2-digit",
             month: "2-digit",
@@ -54,8 +56,42 @@ export default function NoteCard({
         </div>
       )}
 
+      {/* ⚡ Badge nhắc nhở — hiện khi note có reminder, dùng remind_time từ JOIN */}
+      {note.remind_time && (
+        <div
+          className="note-reminder-badge"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            background: "rgba(26, 115, 232, 0.1)",
+            padding: "4px 8px",
+            borderRadius: "12px",
+            fontSize: "12px",
+            color: "#1a73e8",
+            marginTop: "6px",
+            width: "fit-content",
+            fontWeight: "500",
+            border: "1px solid rgba(26, 115, 232, 0.2)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          🔔{" "}
+          {new Date(
+            new Date(note.remind_time).getTime() + 7 * 60 * 60 * 1000,
+          ).toLocaleString("vi-VN", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </div>
+      )}
+
+      {/* 3. Khu vực hiển thị Nhãn danh mục */}
       {note.labels && note.labels.length > 0 && (
-        <div className="label-list">
+        <div className="label-list" style={{ marginTop: "8px" }}>
           {note.labels.map((l) => {
             const lc = getLabelColor(l.label_id);
             return (
@@ -70,7 +106,7 @@ export default function NoteCard({
               >
                 <img
                   src="/images/label.png"
-                  alt="Thông báo"
+                  alt="Nhãn"
                   style={{
                     width: "18px",
                     height: "18px",
@@ -84,6 +120,7 @@ export default function NoteCard({
         </div>
       )}
 
+      {/* 4. Thanh tác vụ khi hover chuột */}
       {hovered && (
         <div className="card-actions">
           {isDeleted ? (
@@ -94,12 +131,12 @@ export default function NoteCard({
                 title="Khôi phục ghi chú"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onStatus(note.note_id, "Active"); // Chuyển ngược về Active
+                  onStatus(note.note_id, "Active");
                 }}
               >
                 <img
                   src="/images/history.png"
-                  alt="Thông báo"
+                  alt="Khôi phục"
                   style={{
                     width: "18px",
                     height: "18px",
@@ -113,13 +150,13 @@ export default function NoteCard({
                 title="Xóa vĩnh viễn"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onStatus(note.note_id, "PermanentlyDeleted"); // Gửi tín hiệu xóa cứng lên backend
+                  onStatus(note.note_id, "PermanentlyDeleted");
                 }}
                 style={{ color: "var(--accent)" }}
               >
                 <img
                   src="/images/trash.png"
-                  alt="Thông báo"
+                  alt="Xóa vĩnh viễn"
                   style={{
                     width: "18px",
                     height: "18px",
@@ -178,7 +215,7 @@ export default function NoteCard({
               >
                 <img
                   src="/images/label.png"
-                  alt="Thông báo"
+                  alt="Gắn nhãn"
                   style={{
                     width: "18px",
                     height: "18px",
@@ -196,7 +233,7 @@ export default function NoteCard({
               >
                 <img
                   src="/images/share (1).png"
-                  alt="Thông báo"
+                  alt="Chia sẻ"
                   style={{
                     width: "18px",
                     height: "18px",
@@ -217,7 +254,7 @@ export default function NoteCard({
               >
                 <img
                   src="/images/archive.png"
-                  alt="Thông báo"
+                  alt="Lưu trữ"
                   style={{
                     width: "18px",
                     height: "18px",
@@ -235,7 +272,7 @@ export default function NoteCard({
               >
                 <img
                   src="/images/trash.png"
-                  alt="Thông báo"
+                  alt="Xóa"
                   style={{
                     width: "18px",
                     height: "18px",

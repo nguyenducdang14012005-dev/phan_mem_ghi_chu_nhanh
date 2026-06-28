@@ -18,12 +18,23 @@ export default function SideBar({
         onClick={() => setView("notes")}
       />
       <NavItem
-        label="Lời nhắc"
+        label="Lịch hẹn"
         active={view === "reminders"}
         onClick={() => setView("reminders")}
       />
+
       <NavItem
-        label="Chỉnh sửa nhãn"
+        label="Lưu trữ"
+        active={view === "archive"}
+        onClick={() => setView("archive")}
+      />
+      <NavItem
+        label="Thùng rác"
+        active={view === "trash"}
+        onClick={() => setView("trash")}
+      />
+      <NavItem
+        label="Thêm nhãn"
         active={view === "labels"}
         onClick={() => setView("labels")}
       />
@@ -40,16 +51,6 @@ export default function SideBar({
           ))}
         </>
       )}
-      <NavItem
-        label="Lưu trữ"
-        active={view === "archive"}
-        onClick={() => setView("archive")}
-      />
-      <NavItem
-        label="Thùng rác"
-        active={view === "trash"}
-        onClick={() => setView("trash")}
-      />
       <div className="sidebar-footer">Giấy phép nguồn mở</div>
     </div>
   );

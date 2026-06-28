@@ -7,7 +7,7 @@ export async function searchNotes({ view, keyword, label_id, user_id }) {
   let url = `${API}/notes/search?`;
   if (view === "archive") url += "status=Archived";
   else if (view === "trash") url += "status=Deleted";
-  else if (view === "reminders") url += "status=Active";
+  else if (view === "reminders") url += "status=Active&has_reminder=1";
   else url += "status=Active";
   if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
   if (label_id) url += `&label_id=${label_id}`;

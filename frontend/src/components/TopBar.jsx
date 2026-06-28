@@ -19,6 +19,8 @@ export default function TopBar({
   adminButton,
   onOpenChangePassword,
   onOpenNotifications,
+  acceptedSharedNotes = [],
+  onChangePermission = { handleChangePermission },
 }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [sharedListOpen, setSharedListOpen] = useState(false);
@@ -57,10 +59,23 @@ export default function TopBar({
       Revoked: "status-revoked",
     })[s] || "";
 
+  // ⚡ ĐÃ CẬP NHẬT: Đếm cả thông báo đổi quyền (Accepted nhưng seen = 0) chưa đọc
   const notifBadgeCount = pendingShares.filter(
     (s) =>
-      s.share_status === "Pending" || (s.share_status === "Revoked" && !s.seen),
+      s.share_status === "Pending" ||
+      ((s.share_status === "Revoked" || s.share_status === "Accepted") &&
+        !s.seen),
   ).length;
+
+  // ⚡ XỬ LÝ DỮ LIỆU: Lọc ra danh sách những ai đang thực tế phối hợp ghi chú với mình
+  const uniqueSharers = Array.from(
+    new Set(
+      acceptedSharedNotes
+        .filter((n) => n.share_status === "Accepted")
+        .map((n) => n.shared_by_name || n.shared_by_email)
+        .filter(Boolean),
+    ),
+  );
 
   return (
     <div className="topbar">
@@ -83,6 +98,48 @@ export default function TopBar({
           onChange={(e) => onSearch(e.target.value)}
         />
       </div>
+
+      {/* ⚡ HIỂN THỊ THÔNG TIN NGƯỜI CHIA SẺ VỚI MÌNH TRÊN TOPBAR */}
+      {uniqueSharers.length > 0 && (
+        <div
+          className="topbar-sharers"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            marginLeft: "12px",
+            marginRight: "auto",
+          }}
+        >
+          <span
+            style={{ fontSize: "13px", color: "#5f6368", fontWeight: "500" }}
+            title="Những người đang chia sẻ ghi chú với bạn"
+          >
+            👥 Đối tác:
+          </span>
+          {uniqueSharers.map((sharer, index) => (
+            <span
+              key={index}
+              className="sharer-badge"
+              title={`Đang nhận chia sẻ từ: ${sharer}`}
+              style={{
+                background: "#e8f0fe",
+                color: "#1a73e8",
+                padding: "4px 10px",
+                borderRadius: "14px",
+                fontSize: "12px",
+                fontWeight: "600",
+                maxWidth: "120px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {sharer.includes("@") ? sharer.split("@")[0] : sharer}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="topbar-right">
         <select
@@ -109,7 +166,7 @@ export default function TopBar({
           />
         </button>
 
-        {/* ── CHUÔNG: lời mời chia sẻ pending ── */}
+        {/* ── CHUÔNG: danh sách thông báo chia sẻ ── */}
         <div className="tb-dropdown-wrap" ref={notifRef}>
           <button
             className="icon-btn tb-notif-btn"
@@ -149,21 +206,46 @@ export default function TopBar({
                 <div className="tb-dropdown-empty">Không có thông báo mới</div>
               ) : (
                 <div className="tb-dropdown-list">
-                  {pendingShares.map((s) =>
-                    s.share_status === "Revoked" ? (
-                      <div key={s.share_id} className="tb-share-item">
-                        <div className="tb-share-meta">
-                          <span className="tb-share-title">
-                            <b>{s.shared_by_name || s.shared_by_email}</b> đã{" "}
-                            <b>dừng chia sẻ</b>{" "}
-                            <b>"{s.title || "Không có tiêu đề"}"</b> với bạn
-                          </span>
-                          <span className="tb-share-perm">
-                            Bạn không còn quyền truy cập ghi chú này
-                          </span>
+                  {pendingShares.map((s) => {
+                    // ⚡ TRƯỜNG HỢP 1: Bị dừng chia sẻ
+                    if (s.share_status === "Revoked") {
+                      return (
+                        <div key={s.share_id} className="tb-share-item">
+                          <div className="tb-share-meta">
+                            <span className="tb-share-title">
+                              <b>{s.shared_by_name || s.shared_by_email}</b> đã{" "}
+                              <b>dừng chia sẻ</b>{" "}
+                              <b>"{s.title || "Không có tiêu đề"}"</b> với bạn
+                            </span>
+                            <span className="tb-share-perm">
+                              Bạn không còn quyền truy cập ghi chú này
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    ) : (
+                      );
+                    }
+
+                    // ⚡ TRƯỜNG HỢP 2: Thay đổi quyền truy cập (ĐÃ THÊM Ở ĐÂY)
+                    if (s.share_status === "Accepted") {
+                      return (
+                        <div key={s.share_id} className="tb-share-item">
+                          <div className="tb-share-meta">
+                            <span className="tb-share-title">
+                              <b>{s.shared_by_name || s.shared_by_email}</b> đã{" "}
+                              <b>thay đổi quyền hạn</b> ghi chú{" "}
+                              <b>"{s.title || "Không có tiêu đề"}"</b> của bạn
+                              thành <b>{permissionLabel(s.permission)}</b>
+                            </span>
+                            <span className="tb-share-perm">
+                              Giao diện đã cập nhật theo quyền mới
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // TRƯỜNG HỢP 3: Lời mời chia sẻ mới (Pending)
+                    return (
                       <div key={s.share_id} className="tb-share-item">
                         <div className="tb-share-meta">
                           <span className="tb-share-title">
@@ -198,8 +280,8 @@ export default function TopBar({
                           </button>
                         </div>
                       </div>
-                    ),
-                  )}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -250,8 +332,52 @@ export default function TopBar({
                           {" → "}
                           {s.shared_with_name || s.shared_with_email}
                         </span>
-                        <span className="tb-share-perm">
-                          {permissionLabel(s.permission)} ·{" "}
+
+                        {/* ⚡ Dropdown Select cho phép sửa quyền trực tiếp */}
+                        <span
+                          className="tb-share-perm"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            marginTop: "4px",
+                          }}
+                        >
+                          <select
+                            value={s.permission}
+                            disabled={
+                              s.share_status === "Revoked" ||
+                              s.share_status === "Rejected"
+                            }
+                            onChange={async (e) => {
+                              const newPerm = e.target.value;
+                              if (onChangePermission) {
+                                await onChangePermission(s.share_id, newPerm);
+                              } else {
+                                console.log(
+                                  "Cập nhật quyền:",
+                                  s.share_id,
+                                  "thành",
+                                  newPerm,
+                                );
+                              }
+                            }}
+                            style={{
+                              padding: "2px 4px",
+                              borderRadius: "4px",
+                              border: "1px solid #dadce0",
+                              fontSize: "12px",
+                              background: "#fff",
+                              color: "#3c4043",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <option value="view">Chỉ xem</option>
+                            <option value="edit">Chỉnh sửa</option>
+                            <option value="delete">Toàn quyền</option>
+                          </select>
+
+                          {" · "}
                           <span className={statusClass(s.share_status)}>
                             {statusLabel(s.share_status)}
                           </span>

@@ -89,7 +89,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
 
   const showToast = (msg) => {
     setToast(msg);
-    setTimeout(() => setToast(""), 30000);
+    setTimeout(() => setToast(""), 3000);
   };
 
   const loadNotes = async (kw = keyword, sort = sortBy) => {
@@ -117,6 +117,9 @@ export default function HomePage({ isLogin, setIsLogin }) {
         const safeActive = Array.isArray(activeNotes) ? activeNotes : [];
         const safeArchived = Array.isArray(archivedNotes) ? archivedNotes : [];
         data = [...safeActive, ...safeArchived];
+      } else if (view === "reminders") {
+        const result = await reminderService.getReminders();
+        data = Array.isArray(result) ? result : [];
       } else {
         const result = await noteService.searchNotes({
           view,
@@ -124,6 +127,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
           label_id: selectedLabel,
           user_id: isLogin.userId,
         });
+
         data = Array.isArray(result) ? result : [];
       }
 
@@ -136,10 +140,14 @@ export default function HomePage({ isLogin, setIsLogin }) {
           return (a.title || "").localeCompare(b.title || "");
         if (sortBy === "za")
           return (b.title || "").localeCompare(a.title || "");
-        if (sortBy === "due_asc")
+
+        // 🛠️ ĐÃ FIX: Đổi từ due_time sang remind_time cho đúng thực tế bảng Reminders
+        if (sortBy === "due_asc") {
           return (
-            new Date(a.due_time || "9999") - new Date(b.due_time || "9999")
+            new Date(a.remind_time || "9999") -
+            new Date(b.remind_time || "9999")
           );
+        }
         return 0;
       });
       setNotes(sorted);
@@ -171,6 +179,18 @@ export default function HomePage({ isLogin, setIsLogin }) {
     }
   };
 
+  const handleChangePermission = async (shareId, newPermission) => {
+    try {
+      await shareService.updateSharePermission(shareId, newPermission);
+      showToast("Đã cập nhật quyền và gửi thông báo chuông thành công!");
+      loadMySharedNotes();
+      loadNotes();
+      loadAcceptedSharedNotes(); // ⚡ BỔ SUNG: Đồng bộ danh sách nhận chia sẻ ngay lập tức
+    } catch (err) {
+      showToast("Lỗi khi thay đổi quyền truy cập");
+    }
+  };
+
   const loadMySharedNotes = async () => {
     if (!isLogin || !isLogin.userId) {
       setMySharedNotes([]);
@@ -189,7 +209,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
       await shareService.acceptShare(share_id);
       showToast("Đã chấp nhận chia sẻ");
       loadPendingShares();
-      loadNotes();
+      loadAcceptedSharedNotes(); // ⚡ BỔ SUNG: Cập nhật lưới note chia sẻ mới nhận
     } catch {
       showToast("Lỗi khi chấp nhận chia sẻ");
     }
@@ -223,6 +243,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
       // ignore
     }
   };
+
   const loadAcceptedSharedNotes = async () => {
     if (!isLogin?.userId) {
       setAcceptedSharedNotes([]);
@@ -235,6 +256,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
       setAcceptedSharedNotes([]);
     }
   };
+
   const checkReminders = async () => {
     try {
       const data = await reminderService.getReminders();
@@ -242,10 +264,14 @@ export default function HomePage({ isLogin, setIsLogin }) {
       const due = data
         .filter((r) => {
           const t = new Date(r.remind_time);
+          console.log("Giờ hiện tại:", now);
+          console.log("Giờ nhắc:", t);
+          console.log("So sánh:", t <= now);
+
           return t <= now && r.status == 0;
         })
         .slice(0, 3); // Chỉ hiện tối đa 3 popup
-      if (due.length > 0) setDueReminders(due);
+      setDueReminders(due);
     } catch (err) {
       console.log("Lỗi checkReminders:", err);
     }
@@ -294,7 +320,14 @@ export default function HomePage({ isLogin, setIsLogin }) {
       setSharePermission("view");
       loadMySharedNotes();
     } catch (err) {
-      showToast(err?.message || "Lỗi khi chia sẻ");
+      const errMsg = err?.message || "";
+      if (errMsg.includes("tìm thấy") || errMsg.includes("không tồn tại")) {
+        showToast(
+          "Người này không sử dụng ứng dụng, vui lòng liên hệ với bạn của bạn để làm rõ",
+        );
+      } else {
+        showToast(errMsg || "Lỗi khi chia sẻ");
+      }
     }
   };
 
@@ -303,37 +336,49 @@ export default function HomePage({ isLogin, setIsLogin }) {
       setComposerOpen(false);
       return;
     }
-    if (newDueTime) {
-      const trung = notes.find((n) => {
-        if (!n.due_time) return false;
-        const dbTime = new Date(n.due_time);
-        dbTime.setHours(dbTime.getHours() + 7);
-        return dbTime.toISOString().slice(0, 16) === newDueTime;
-      });
-      if (trung) {
-        showToast(`Trùng giờ với ghi chú "${trung.title || "không tên"}"!`);
-        return;
-      }
-    }
     try {
-      await noteService.createNote({
+      const created = await noteService.createNote({
         title: newTitle,
         content: newContent,
-        due_time: newDueTime || null,
         color: newColor !== "#ffffff" ? newColor : null,
       });
+
+      // ⚡ Nếu có hẹn giờ → tạo reminder gắn với note vừa tạo
+      const noteId = created?.note_id ?? created?.data?.note_id;
+      let hasReminderError = false;
+
+      if (newDueTime && noteId) {
+        try {
+          await reminderService.createReminder({
+            note_id: noteId,
+            remind_time: newDueTime,
+          });
+        } catch (err) {
+          hasReminderError = true;
+          showToast("Lưu ghi chú thành công nhưng lỗi đặt hẹn giờ");
+        }
+      }
+
+      // 🛠️ ĐÃ SỬA: Bắn thông báo Toast TRƯỚC KHI xóa sạch state
+      if (!hasReminderError) {
+        showToast(
+          newDueTime ? "Đã lưu ghi chú và đặt hẹn giờ 🔔" : "Đã lưu ghi chú",
+        );
+      }
+
+      // Xóa state sau khi đã dùng xong cho thông báo
       setNewTitle("");
       setNewContent("");
       setNewDueTime("");
       setNewColor("#ffffff");
       setComposerOpen(false);
-      showToast("Đã lưu ghi chú");
+
+      // Tải lại danh sách
       loadNotes();
-    } catch {
+    } catch (error) {
       showToast("Lỗi khi lưu ghi chú");
     }
   };
-
   const togglePin = async (id) => {
     try {
       await noteService.togglePin(id);
@@ -364,8 +409,6 @@ export default function HomePage({ isLogin, setIsLogin }) {
       status === "Active" && note?.status === "Archived";
     const isDeleteAction = status === "Deleted";
 
-    // ⚡ Lưu trữ / hủy lưu trữ / xóa (chuyển vào thùng rác) đều là hành động
-    // làm ghi chú ẩn khỏi trang chính -> luôn hỏi xác nhận trước khi thực hiện.
     if (isArchiveAction || isUnarchiveAction || isDeleteAction) {
       setConfirmDialog({
         title: isArchiveAction
@@ -392,8 +435,6 @@ export default function HomePage({ isLogin, setIsLogin }) {
   const toggleLabelOnNote = async (note_id, label_id, currentLabels) => {
     const isAttached = currentLabels.some((l) => l.label_id === label_id);
     if (isAttached) {
-      // ⚡ Xóa nhãn khỏi ghi chú là hành động có thể gây mất dữ liệu phân loại
-      // -> luôn hỏi xác nhận trước khi thực hiện.
       const label = currentLabels.find((l) => l.label_id === label_id);
       setConfirmDialog({
         title: "Xóa nhãn",
@@ -401,7 +442,6 @@ export default function HomePage({ isLogin, setIsLogin }) {
         onConfirm: async () => {
           setConfirmDialog(null);
           await labelService.detachLabel(note_id, label_id);
-          // Cập nhật lại danh sách nhãn đang hiển thị trong modal gán nhãn (nếu còn mở)
           setLabelPickerNoteLabels((prev) =>
             prev.filter((l) => l.label_id !== label_id),
           );
@@ -420,12 +460,23 @@ export default function HomePage({ isLogin, setIsLogin }) {
     loadLabels();
   };
 
+  const updateLabel = async (id, newName) => {
+    if (!newName || newName.trim() === "") return;
+    try {
+      await labelService.updateLabel(id, { label_name: newName });
+      showToast("Đã cập nhật tên nhãn");
+      loadLabels();
+    } catch {
+      showToast("Lỗi khi cập nhật nhãn");
+    }
+  };
+
   const deleteLabel = async (id) => {
     await labelService.deleteLabel(id);
     loadLabels();
   };
 
-  // ⚡ Đóng modal xem/chỉnh sửa ghi chú: lưu thay đổi (nếu có) và/hoặc đổi trạng thái
+  // ⚡ ĐÃ SỬA LỖI: Gọi cả loadAcceptedSharedNotes() để làm mới giao diện người được chia sẻ
   const handleCloseViewingNote = async (payload, statusChange) => {
     const id = viewingNote?.note_id;
     setViewingNote(null);
@@ -451,10 +502,12 @@ export default function HomePage({ isLogin, setIsLogin }) {
         showToast("Đã lưu thay đổi");
       }
       loadNotes();
+      loadAcceptedSharedNotes(); // ⚡ BẮT BUỘC: Đồng bộ lưới note của đối tác, bẻ gãy cache 304 Browser!
     } catch {
       showToast("Lỗi khi lưu ghi chú");
     }
   };
+
   const handleConfirmReminder = async (id) => {
     try {
       await reminderService.updateReminder(id, {
@@ -464,6 +517,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
       setDueReminders((prev) => prev.filter((r) => r.reminder_id !== id));
     } catch {}
   };
+
   const handleRescheduleReminder = async (id, newTime) => {
     try {
       await reminderService.updateReminder(id, {
@@ -474,25 +528,24 @@ export default function HomePage({ isLogin, setIsLogin }) {
     } catch {}
   };
 
-  const pinnedNotes = notes.filter((n) => n.is_pinned);
-  // ⚡ Ở trang chính (view "notes"), loadNotes() đang gộp cả ghi chú Active VÀ
-  // Archived lại với nhau. Sau khi một ghi chú được LƯU TRỮ, nó không nên còn
-  // hiện ở trang chính nữa (đã có mục "Lưu trữ" riêng để xem) — trừ khi ghi chú
-  // đó đang được ghim, thì vẫn luôn hiển thị ở trang chính như cũ. Nhãn (label)
-  // không liên quan tới việc ẩn/hiện này.
+  // 1. Tạo một danh sách chứa tất cả ID của ghi chú đã được nhận chia sẻ
+  const sharedNoteIds = acceptedSharedNotes.map((n) => n.note_id);
+
+  // 2. Lọc danh sách ghim: Phải là của mình (không nằm trong danh sách được chia sẻ)
+  const pinnedNotes = notes.filter(
+    (n) => n.is_pinned && !sharedNoteIds.includes(n.note_id),
+  );
+
+  // 3. Lọc danh sách thường: Không ghim, hợp trạng thái view VÀ không nằm trong danh sách được chia sẻ
   const otherNotes = notes.filter((n) => {
     if (n.is_pinned) return false;
     if (view === "notes" && n.status === "Archived") return false;
+    if (sharedNoteIds.includes(n.note_id)) return false; // ⚡ BỔ SUNG: Chặn không cho hiện ở vùng lưu trữ thông thường
     return true;
   });
-
-  // ⚡ Kiểm tra user có role Admin không (để hiện nút Admin)
   const isAdmin =
     isLogin?.roles?.includes("Admin") || isLogin?.role === "Admin";
 
-  // ============================================================
-  // ⚡ RENDER: Nếu đang ở trang Admin thì render AdminDashboardPage
-  // ============================================================
   if (page === "admin") {
     return (
       <AdminDashboardPage
@@ -504,9 +557,6 @@ export default function HomePage({ isLogin, setIsLogin }) {
     );
   }
 
-  // ============================================================
-  // RENDER: HomePage bình thường
-  // ============================================================
   return (
     <div className="app">
       <TopBar
@@ -514,7 +564,10 @@ export default function HomePage({ isLogin, setIsLogin }) {
         onSearch={handleSearch}
         sortBy={sortBy}
         setSortBy={setSortBy}
-        onRefresh={() => loadNotes()}
+        onRefresh={() => {
+          loadNotes();
+          loadAcceptedSharedNotes();
+        }}
         toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         isOpen={isOpen}
         toggleMenu={toggleMenu}
@@ -527,7 +580,8 @@ export default function HomePage({ isLogin, setIsLogin }) {
         onRevokeShare={handleRevokeShare}
         onOpenChangePassword={() => setChangePasswordOpen(true)}
         onOpenNotifications={handleOpenNotifications}
-        // ⚡ Truyền nút Admin vào TopBar (tuỳ TopBar có hỗ trợ slot hay không)
+        acceptedSharedNotes={acceptedSharedNotes}
+        onChangePermission={handleChangePermission}
         adminButton={
           isAdmin ? (
             <button
@@ -554,7 +608,6 @@ export default function HomePage({ isLogin, setIsLogin }) {
         }
       />
 
-      {/* ⚡ NÚT ADMIN nổi ở góc phải nếu TopBar không hỗ trợ prop adminButton */}
       {isAdmin && (
         <button
           onClick={() => setPage("admin")}
@@ -618,11 +671,9 @@ export default function HomePage({ isLogin, setIsLogin }) {
             setNewDueTime={setNewDueTime}
             newColor={newColor}
             setNewColor={setNewColor}
-            datePickerOpen={datePickerOpen}
-            setDatePickerOpen={setDatePickerOpen}
             createNote={createNote}
           />
-          {acceptedSharedNotes.length > 0 && (
+          {view === "notes" && acceptedSharedNotes.length > 0 && (
             <>
               <div className="shared-section-label">
                 👥 Được chia sẻ với tôi
@@ -652,6 +703,30 @@ export default function HomePage({ isLogin, setIsLogin }) {
                       className="note-content"
                       dangerouslySetInnerHTML={{ __html: n.content }}
                     />
+
+                    {n.due_time && (
+                      <div
+                        className="note-deadline-badge"
+                        style={{
+                          fontSize: "12px",
+                          color: "#d93025",
+                          marginTop: "10px",
+                          fontWeight: "500",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        ⏰ Hạn chót:{" "}
+                        {new Date(n.due_time).toLocaleString("vi-VN", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                        })}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -661,7 +736,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
           {view === "labels" ? (
             <div className="label-manager">
               <div className="label-manager-header">
-                <h3>Chỉnh sửa nhãn</h3>
+                <h3>Quản lý nhãn</h3>
                 <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                   <input
                     id="newLabelInput"
@@ -675,19 +750,52 @@ export default function HomePage({ isLogin, setIsLogin }) {
                         document.getElementById("newLabelInput").value;
                       if (!val) return;
                       await addLabel(val);
+                      document.getElementById("newLabelInput").value = "";
                     }}
                   >
                     Thêm
                   </button>
                 </div>
               </div>
+
               {labels.map((l) => (
-                <div key={l.label_id} className="label-edit-row">
-                  <span style={{ marginRight: 8 }}>🏷</span>
-                  <span style={{ flex: 1 }}>{l.label_name}</span>
+                <div
+                  key={l.label_id}
+                  className="label-edit-row"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  <span>🏷</span>
+                  <input
+                    type="text"
+                    defaultValue={l.label_name}
+                    className="modal-input"
+                    style={{
+                      flex: 1,
+                      border: "none",
+                      background: "transparent",
+                      padding: "4px 8px",
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value !== l.label_name) {
+                        updateLabel(l.label_id, e.target.value);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        updateLabel(l.label_id, e.target.value);
+                        e.target.blur();
+                      }
+                    }}
+                  />
                   <button
                     className="card-btn"
                     onClick={() => deleteLabel(l.label_id)}
+                    title="Xóa nhãn"
                   >
                     X
                   </button>
@@ -715,7 +823,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
                   <div className="section-label">Được ghim</div>
                   <div className="notes-grid">
                     {(view === "reminders"
-                      ? pinnedNotes.filter((n) => n.due_time)
+                      ? pinnedNotes.filter((n) => n.remind_time)
                       : pinnedNotes
                     ).map((n) => (
                       <NoteCard
@@ -749,7 +857,7 @@ export default function HomePage({ isLogin, setIsLogin }) {
               )}
               <div className="notes-grid">
                 {(view === "reminders"
-                  ? otherNotes.filter((n) => n.due_time)
+                  ? otherNotes.filter((n) => n.remind_time)
                   : otherNotes
                 ).map((n) => (
                   <NoteCard

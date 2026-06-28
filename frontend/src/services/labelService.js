@@ -11,6 +11,14 @@ export async function createLabel(payload) {
   });
 }
 
+// ⚡ THÊM HÀM NÀY: Để gửi request cập nhật lên Backend
+export async function updateLabel(id, payload) {
+  return apiFetch(`${API}/labels/${id}`, {
+    method: "PUT", // Hoặc "PATCH" tùy thuộc vào Router ở Backend của bạn cấu hình là gì
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function deleteLabel(id) {
   return apiFetch(`${API}/labels/${id}`, { method: "DELETE" });
 }
@@ -32,6 +40,7 @@ export async function detachLabel(note_id, label_id) {
 export default {
   getLabels,
   createLabel,
+  updateLabel,
   deleteLabel,
   attachLabel,
   detachLabel,
